@@ -1,0 +1,6 @@
+# mockerize — file list for curl installer
+SKILL.md
+agents/openai.yaml
+evals/evals.json
+evals/trigger-evals.json
+evals/validate.py

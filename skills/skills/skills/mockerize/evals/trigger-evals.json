@@ -1,0 +1,82 @@
+[
+  {
+    "query": "Implement this Figma checkout mockup in our existing app. Match it closely at 390x844, make it responsive on tablet and desktop, and wire every field to the real API.",
+    "should_trigger": true
+  },
+  {
+    "query": "Tolong bikin UI ini semirip mungkin dari screenshot, tapi jangan kaku saat pindah dari mobile ke tablet. Kalau response backend belum cukup, adjust contract-nya juga.",
+    "should_trigger": true
+  },
+  {
+    "query": "Use the existing mockup.pen as source of truth and update the live storefront to match it. Preserve checkout and shipping flows.",
+    "should_trigger": true
+  },
+  {
+    "query": "Reconcile our implemented dashboard with the latest design spec. I want a visual diff, responsive fixes, and a map of which API fields support each card.",
+    "should_trigger": true
+  },
+  {
+    "query": "Turn these desktop and mobile mockups into production React components, including loading, empty, error, permission, and submitting states.",
+    "should_trigger": true
+  },
+  {
+    "query": "Audit the Figma profile screen against the current frontend and backend. Tell me the implementation impact only; don't change code yet.",
+    "should_trigger": true
+  },
+  {
+    "query": "This screenshot includes an available balance that our endpoint doesn't return. Implement the screen and make the smallest safe backend adjustment.",
+    "should_trigger": true
+  },
+  {
+    "query": "Make the current page pixel-close to the supplied 1440x900 reference, then infer sensible layout constraints for 1024, 768, 390, and 360 widths.",
+    "should_trigger": true
+  },
+  {
+    "query": "Follow this Pencil design for the admin order page, but keep the existing payment, shipping, and refund rules intact.",
+    "should_trigger": true
+  },
+  {
+    "query": "The UI is already coded from the mockup but still looks off. Run it, compare screenshots, adjust the biggest differences, and regression-check other viewports.",
+    "should_trigger": true
+  },
+  {
+    "query": "Buat landing page baru untuk produk kopi. Bebas desainnya, yang penting modern dan responsive. Belum ada mockup.",
+    "should_trigger": false
+  },
+  {
+    "query": "Review this dashboard design before we ship. Is the visual hierarchy and typography good? I only want design critique, not implementation.",
+    "should_trigger": false
+  },
+  {
+    "query": "Create a generic React login form with email, password, remember me, and forgot password.",
+    "should_trigger": false
+  },
+  {
+    "query": "Debug why POST /orders returns 500 when inventory is low. Trace the backend root cause; no UI work is involved.",
+    "should_trigger": false
+  },
+  {
+    "query": "Write a database migration to add display_name to users and backfill it from full_name.",
+    "should_trigger": false
+  },
+  {
+    "query": "Can you explain the difference between CSS Grid and Flexbox with a small example?",
+    "should_trigger": false
+  },
+  {
+    "query": "Create a Figma mockup for a mobile finance dashboard from this written product brief.",
+    "should_trigger": false
+  },
+  {
+    "query": "Audit our REST API for breaking changes and suggest a versioning strategy.",
+    "should_trigger": false
+  },
+  {
+    "query": "Refactor this existing component to reduce duplicate code without changing its UI or behavior.",
+    "should_trigger": false
+  },
+  {
+    "query": "Generate a responsive Tailwind breakpoint cheat sheet for our frontend team.",
+    "should_trigger": false
+  }
+]

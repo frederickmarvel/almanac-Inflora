@@ -1,0 +1,24 @@
+{
+  "name": "board-thinking",
+  "version": "0.1.1",
+  "description": "Board Thinking — convene a virtual board of 5-7 stakeholder advisors (Customer, Investor, Operator, Contrarian, Time Traveler + domain seats) to stress-test an idea from multiple lenses. Includes /onboard (multi-perspective idea diagnostic with two rounds of questions plus cross-examination plus board verdict). Sits between raw ideation and PRD/architecture work.",
+  "author": {
+    "name": "Dodi (Verzth)",
+    "url": "https://github.com/verzth"
+  },
+  "homepage": "https://github.com/verzth/skills/tree/main/skills/board-thinking",
+  "repository": "https://github.com/verzth/skills",
+  "license": "MIT",
+  "keywords": [
+    "board-thinking",
+    "ideation",
+    "diagnostic",
+    "multi-perspective",
+    "stress-test",
+    "advisor",
+    "pre-prd",
+    "founder",
+    "ai-first",
+    "cross-examination"
+  ]
+}

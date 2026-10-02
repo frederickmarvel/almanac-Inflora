@@ -1,0 +1,6 @@
+{
+  "name": "golang-developer",
+  "version": "1.5.0",
+  "description": "Go microservices development for an opinionated stack (GORM, gRPC + grpc-gateway, Wire DI, NATS JetStream, Redis, MySQL, buf proto workflow).",
+  "contextFileName": "SKILL.md"
+}

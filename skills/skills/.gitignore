@@ -1,0 +1,11 @@
+
+.DS_Store
+
+.idea/
+
+# Local scratch state (scheduled tasks lock, etc.)
+.claude/
+
+# Benchmark / eval workspace artifacts (regenerated per session)
+skills/*/skills/*-workspace/
+*-workspace/

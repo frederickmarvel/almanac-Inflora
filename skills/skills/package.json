@@ -1,0 +1,43 @@
+{
+  "name": "@verzth/skills",
+  "version": "1.13.0",
+  "description": "Custom Claude skills by verzth — install via npx, or via Claude Code plugin marketplace",
+  "bin": {
+    "verzth-skills": "bin/cli.js"
+  },
+  "scripts": {
+    "check:publication": "node scripts/check-publication.js",
+    "prepack": "npm run check:publication"
+  },
+  "keywords": [
+    "claude",
+    "claude-code",
+    "cowork",
+    "skills",
+    "ai",
+    "anthropic",
+    "plugin-marketplace"
+  ],
+  "author": "verzth",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/verzth/skills.git"
+  },
+  "homepage": "https://github.com/verzth/skills#readme",
+  "bugs": {
+    "url": "https://github.com/verzth/skills/issues"
+  },
+  "engines": {
+    "node": ">=14.14.0"
+  },
+  "files": [
+    ".claude-plugin/",
+    "bin/",
+    "skills/",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}

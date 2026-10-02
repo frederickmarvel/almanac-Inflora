@@ -1,0 +1,14 @@
+# em-thinking — file list for curl installer
+.claude-plugin/plugin.json
+ETHOS.md
+README.md
+references/architecture-checklist.md
+references/code-review-rubric.md
+references/cognitive-patterns.md
+references/debug-playbook.md
+references/deploy-prep-checklist.md
+references/html-template.md
+references/risk-tiering.md
+skills/em-plan/SKILL.md
+skills/em-review/SKILL.md
+skills/em-works/SKILL.md

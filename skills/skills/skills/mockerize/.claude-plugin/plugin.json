@@ -1,0 +1,23 @@
+{
+  "name": "mockerize",
+  "version": "0.1.0",
+  "description": "Turn Figma, Pencil, screenshot, image, or design-spec mockups into production-ready UI with high visual fidelity, responsive behavior, real frontend-backend mapping, minimal compatible backend adjustments, and visual plus regression verification.",
+  "author": {
+    "name": "Dodi (Verzth)",
+    "url": "https://github.com/verzth"
+  },
+  "homepage": "https://github.com/verzth/skills/tree/main/skills/mockerize",
+  "repository": "https://github.com/verzth/skills",
+  "license": "MIT",
+  "keywords": [
+    "mockup",
+    "frontend",
+    "responsive-ui",
+    "figma",
+    "pencil",
+    "visual-fidelity",
+    "design-to-code",
+    "backend-integration",
+    "full-stack"
+  ]
+}

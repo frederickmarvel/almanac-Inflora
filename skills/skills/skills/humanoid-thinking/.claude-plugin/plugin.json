@@ -1,0 +1,20 @@
+{
+  "name": "humanoid-thinking",
+  "version": "1.1.1",
+  "description": "Human cognitive framework — default mode for all interactions. Intuition-first thinking validated by logic. Confirms over assumes when ambiguous.",
+  "author": {
+    "name": "Dodi (Verzth)",
+    "url": "https://github.com/verzth"
+  },
+  "homepage": "https://github.com/verzth/skills/tree/main/skills/humanoid-thinking",
+  "repository": "https://github.com/verzth/skills",
+  "license": "MIT",
+  "keywords": [
+    "thinking",
+    "framework",
+    "common-sense",
+    "cognitive",
+    "default-behavior",
+    "intuition"
+  ]
+}

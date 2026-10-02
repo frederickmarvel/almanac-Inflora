@@ -1,0 +1,152 @@
+{
+  "skill_name": "golang-developer",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Create a new entity called Redemption for the nav-engine-v2 project. It should track fund redemption requests from investors, support processing, completion, cancellation, failure states, and require HMAC signature validation. Include the repository interface with fluent query builders, the service with proper params validation, and the Wire injection setup.",
+      "expected_output": "Complete scaffolding with: 1) Entity composing BaseEntitySF + Processable + Completable + Cancelable + Failable + Signable traits, 2) Repository with fluent For* methods and defer clean(), 3) Service with triple return (result, error, []ParamError), 4) Params struct implementing IsMandatoryFilled/MandatorySchema/MandatoryErrors, 5) Wire injection function",
+      "files": [],
+      "assertions": [
+        {"text": "Entity embeds BaseEntitySF (snowflake ID)", "type": "content_check"},
+        {"text": "Entity embeds Processable trait", "type": "content_check"},
+        {"text": "Entity embeds Completable trait", "type": "content_check"},
+        {"text": "Entity embeds Cancelable trait", "type": "content_check"},
+        {"text": "Entity embeds Failable trait", "type": "content_check"},
+        {"text": "Entity embeds Signable trait", "type": "content_check"},
+        {"text": "Entity does NOT define TableName() method (GORM auto-derives)", "type": "content_check"},
+        {"text": "Repository interface has fluent For* methods returning self", "type": "content_check"},
+        {"text": "Repository execution methods have defer r.clean()", "type": "content_check"},
+        {"text": "Repository has buildQuery() helper", "type": "content_check"},
+        {"text": "Service methods return (result, error, []ParamError) triple", "type": "content_check"},
+        {"text": "Service has defer helpers.LogAndCatchPanic()", "type": "content_check"},
+        {"text": "Params struct implements IsMandatoryFilled() bool", "type": "content_check"},
+        {"text": "Params struct implements MandatoryErrors() []ParamError", "type": "content_check"},
+        {"text": "Wire function uses wire.Build with correct dependency chain", "type": "content_check"},
+        {"text": "Boolean fields use int type in Go with tinyint(1) GORM tag, not bool", "type": "content_check"},
+        {"text": "Sign GetSignData uses StringFixed(4) for decimals and Unix() for timestamps", "type": "content_check"}
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Review this Go code for issues:\n\n```go\ntype PaymentService struct {\n    paymentRepo repository.PaymentRepository\n}\n\nfunc (s PaymentService) ProcessPayment(ctx context.Context, id uint64, fee float64) (*entity.Payment, error) {\n    payment, err := s.paymentRepo.ForID(id).ForStatus(\"pending\").Get(ctx)\n    if err != nil {\n        return nil, err\n    }\n    payment.Fee = fee\n    payment.Status = \"processing\"\n    result, err := s.paymentRepo.Update(ctx, payment)\n    return result, err\n}\n```",
+      "expected_output": "Review identifying: 1) Wrong return signature — should be triple return, 2) float64 for money — must use decimal.Decimal, 3) Missing Params interface — no input validation, 4) Missing defer helpers.LogAndCatchPanic(), 5) Fee should be negative (sign convention), 6) Missing SyncProcessedDate() call, 7) No transaction management for state change, 8) Missing defer r.clean() concern",
+      "files": [],
+      "assertions": [
+        {"text": "Flags missing triple return (result, error, []ParamError)", "type": "content_check"},
+        {"text": "Flags float64 for monetary value — must use decimal.Decimal", "type": "content_check"},
+        {"text": "Flags missing Params interface for input validation", "type": "content_check"},
+        {"text": "Flags missing defer helpers.LogAndCatchPanic()", "type": "content_check"},
+        {"text": "Flags fee sign convention — must be stored as negative", "type": "content_check"},
+        {"text": "Flags missing SyncProcessedDate() trait call", "type": "content_check"},
+        {"text": "Flags missing transaction for state transition", "type": "content_check"},
+        {"text": "Provides corrected code example", "type": "content_check"}
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "I'm adding a new scheduled job to nav-engine-v2 that runs every hour to check for stale transactions that have been in 'processing' status for more than 24 hours and mark them as failed. Walk me through the full implementation.",
+      "expected_output": "Implementation covering: 1) Add Scheduler record to DB, 2) Create job handler function, 3) Register in job registry, 4) Service method with triple return, 5) CronLocker usage, 6) Repository query with ForStatus + date filter, 7) State transition via Fail() with SyncFailedDate()",
+      "files": [],
+      "assertions": [
+        {"text": "Creates Scheduler database record with cron expression", "type": "content_check"},
+        {"text": "Job handler uses Wire service-only injection", "type": "content_check"},
+        {"text": "Registers job code in the jobRegistry map", "type": "content_check"},
+        {"text": "Uses CronLocker (Redis SetNX) for distributed locking", "type": "content_check"},
+        {"text": "Service method has triple return pattern", "type": "content_check"},
+        {"text": "Repository uses ForStatus(\"processing\") fluent filter", "type": "content_check"},
+        {"text": "Calls SyncFailedDate() on the Failable trait", "type": "content_check"},
+        {"text": "Uses transaction for batch state transitions", "type": "content_check"},
+        {"text": "Mentions 15-second hot reload for new jobs", "type": "content_check"}
+      ]
+    },
+    {
+      "id": 4,
+      "name": "project-bootstrap-stack-confirmation",
+      "description": "Tests whether the model triggers the Project Bootstrap Flow (AskUserQuestion) before scaffolding a brand-new Go service, instead of silently assuming the default stack.",
+      "prompt": "Start a new Go microservice called billing-engine from scratch. I need it to handle invoice generation and billing cycles. Initialize the project.",
+      "trap": "Model might immediately scaffold the full default stack (GORM + Wire + NATS + Redis + MySQL + Supervisord) without confirming the user actually wants all of it for a brand-new project.",
+      "files": [],
+      "assertions": [
+        {"text": "Calls AskUserQuestion BEFORE writing any project file", "type": "content_check"},
+        {"text": "Asks about stack choice (default vs custom vs library-only)", "type": "content_check"},
+        {"text": "Asks about API tiers needed (admin / admin+insider / admin+insider+public / gRPC-only)", "type": "content_check"},
+        {"text": "Asks whether NATS JetStream is needed", "type": "content_check"},
+        {"text": "Asks whether scheduler/routine engine is needed", "type": "content_check"},
+        {"text": "Does NOT generate go.mod or src/ tree before user confirms answers", "type": "content_check"},
+        {"text": "Mentions that answers will be remembered for the rest of the session", "type": "content_check"}
+      ]
+    },
+    {
+      "id": 5,
+      "name": "nats-consumer-context-misuse",
+      "description": "Tests whether the model uses a consumer-scoped ctx (with WithTimeout and parentCtx from engine lifecycle) instead of context.Background() inside a NATS JetStream subscription handler.",
+      "prompt": "Write a NATS JetStream consumer in src/pool/order_pool.go that subscribes to 'order.created' and calls OrderService.MarkProcessed for each message. Include proper context handling — the consumer should stop cleanly on engine shutdown, each message should have its own timeout, and tenant_id should be restored from message headers.",
+      "trap": "Model might use context.Background() inside the handler (breaking shutdown propagation), omit per-message WithTimeout (slow handler blocks consumer), or forget to restore tenant_id from NATS headers (downstream services lose tenant scope).",
+      "files": [],
+      "assertions": [
+        {"text": "Subscribe accepts a parentCtx (engine lifecycle), NOT context.Background()", "type": "content_check"},
+        {"text": "Per-message context derives from parentCtx via context.WithTimeout", "type": "content_check"},
+        {"text": "Calls defer cancel() on the per-message context", "type": "content_check"},
+        {"text": "Restores tenant_id from msg.Header (e.g., X-Tenant-ID) into context using helpers.WithTenantID", "type": "content_check"},
+        {"text": "Restores trace_id from msg.Header into context", "type": "content_check"},
+        {"text": "Calls msg.Ack() on success and msg.Nak() on handler error", "type": "content_check"},
+        {"text": "Does NOT pass the producer's request ctx into the handler via closure", "type": "content_check"},
+        {"text": "Logs handler error with logger.With(ctx, ...) so trace_id is attached", "type": "content_check"}
+      ]
+    },
+    {
+      "id": 6,
+      "name": "observability-mandatory-fields-missing",
+      "description": "Tests whether the model flags missing observability fields when reviewing service code that logs without ctx-derived structured fields.",
+      "prompt": "Review this Go service for observability issues:\n\n```go\nfunc (s *OrderServiceImpl) Process(ctx context.Context, params *ProcessOrderParams) (*entity.Order, error, []ParamError) {\n    logger.Info(\"processing order\")\n    order, err := s.OrderRepo.ForID(params.GetID()).Get(ctx)\n    if err != nil {\n        logger.Error(\"repo error: \" + err.Error())\n        return nil, err, nil\n    }\n    if order == nil {\n        return nil, nil, nil\n    }\n    order.Status = \"processed\"\n    if err := s.OrderRepo.Update(ctx, order); err != nil {\n        fmt.Println(\"update failed\", err)\n        return nil, err, nil\n    }\n    logger.Info(\"processed order \" + fmt.Sprint(order.ID))\n    return order, nil, nil\n}\n```",
+      "trap": "Model might focus only on business logic (missing transaction, missing defer LogAndCatchPanic) and miss the observability issues: logger.Info/Error without With(ctx), fmt.Println bypassing Zap, string concatenation instead of zap.Field, no trace_id/tenant_id correlation possible.",
+      "files": [],
+      "assertions": [
+        {"text": "Flags logger.Info called without logger.With(ctx, ...) — missing trace_id/tenant_id fields", "type": "content_check"},
+        {"text": "Flags fmt.Println bypassing structured logging and severity routing", "type": "content_check"},
+        {"text": "Flags string concatenation in log message instead of zap.Error(err) typed field", "type": "content_check"},
+        {"text": "Flags missing defer helpers.LogAndCatchPanic() at top of method", "type": "content_check"},
+        {"text": "Flags absent transaction for the Update state transition", "type": "content_check"},
+        {"text": "Provides corrected code using logger.With(ctx, zap.String(\"op\", \"...\"))", "type": "content_check"},
+        {"text": "Uses zap.Uint64(\"order_id\", ...) and zap.Error(err) typed fields in the corrected version", "type": "content_check"}
+      ]
+    },
+    {
+      "id": 7,
+      "name": "proto-workflow-violation",
+      "description": "Tests whether the model catches the `buf generate` standalone anti-pattern and explains why `make protogen` is mandatory.",
+      "prompt": "I added a new field to proto/nav/admin/v1/order.proto with a @gotags validate tag. After running `buf generate`, the validate tag isn't showing up in the generated *.pb.go and the controller's c.Validator.Struct(req) accepts invalid input. What did I do wrong?",
+      "trap": "Model might suggest manually editing the *.pb.go to add the validate tag (which gets wiped on next generation) or re-running `buf generate` with different flags (still skips inject-tag). The correct diagnosis is that `buf generate` standalone skips protoc-go-inject-tag, and `make protogen` is the required pipeline.",
+      "files": [],
+      "assertions": [
+        {"text": "Identifies that running `buf generate` directly skips the protoc-go-inject-tag step", "type": "content_check"},
+        {"text": "Explains that @gotags magic comments are applied by protoc-go-inject-tag, not by buf generate", "type": "content_check"},
+        {"text": "Tells the user to run `make protogen` (NOT `buf generate` again)", "type": "content_check"},
+        {"text": "Does NOT suggest hand-editing *.pb.go to restore the validate tag", "type": "content_check"},
+        {"text": "Mentions that without the validate tag, c.Validator.Struct(req) silently accepts invalid input — security/correctness issue", "type": "content_check"},
+        {"text": "References references/proto-workflow.md or the make protogen pipeline (buf lint → buf generate → protoc-go-inject-tag)", "type": "content_check"},
+        {"text": "Verifies the @gotags syntax is exactly `// @gotags: validate:\"...\"` (not `// gotags:` or `// @gotag:`)", "type": "content_check"}
+      ]
+    },
+    {
+      "id": 8,
+      "name": "concurrency-bulk-fanout",
+      "description": "Tests whether the model uses errgroup with bounded concurrency, respects ctx propagation, avoids sharing the repository fluent builder across goroutines, and handles the result race safely when fanning out a bulk operation.",
+      "prompt": "Add a new service method OrderService.BulkRefresh that takes []uint64 of order IDs, fetches each in parallel via OrderRepo.ForID().Get(ctx), and returns the slice of *entity.Order. Cap concurrency at 8. The method must be safe under `go test -race`, propagate cancellation, and return the first error encountered.",
+      "trap": "Model might (a) use go fn() unbounded, (b) share s.OrderRepo across goroutines triggering the whereQuery race, (c) ignore ctx cancellation, (d) write to results map without synchronization, or (e) drop errors silently. Correct answer uses errgroup.WithContext + SetLimit(8) + index-based result writing + early return on g.Wait() error.",
+      "files": [],
+      "assertions": [
+        {"text": "Uses errgroup.WithContext(ctx) (NOT plain go fn() spawning unbounded goroutines)", "type": "content_check"},
+        {"text": "Calls g.SetLimit(8) to bound concurrent operations", "type": "content_check"},
+        {"text": "Workers respect gctx (the errgroup-derived ctx), not the original ctx", "type": "content_check"},
+        {"text": "Result is written to a pre-sized slice by index (results[i] = ...) — NOT to a shared map without synchronization", "type": "content_check"},
+        {"text": "Loop variable is shadowed (i, id := i, id) for pre-Go-1.22 safety, or notes Go 1.22+ makes this unnecessary", "type": "content_check"},
+        {"text": "Returns the error from g.Wait() — does NOT swallow it", "type": "content_check"},
+        {"text": "Method signature returns triple (result, error, []ParamError) per service-patterns convention", "type": "content_check"},
+        {"text": "Service method starts with defer helpers.LogAndCatchPanic()", "type": "content_check"},
+        {"text": "Mentions or notes that each goroutine calls s.OrderRepo.ForID(id).Get(gctx) freshly (NOT sharing a fluent builder mid-chain across goroutines) — references concurrency-patterns.md §11 or equivalent reasoning about whereQuery", "type": "content_check"},
+        {"text": "Mentions `go test -race` should be run to verify (or that the team CI gate enforces it)", "type": "content_check"}
+      ]
+    }
+  ]
+}

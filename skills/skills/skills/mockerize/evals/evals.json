@@ -1,0 +1,489 @@
+{
+  "skill_name": "mockerize",
+  "evals": [
+    {
+      "id": 1,
+      "eval_name": "reference-viewport-responsive-intent",
+      "complexity": "MEDIUM",
+      "dimensions": [
+        "visual_fidelity",
+        "responsive_reasoning",
+        "verification"
+      ],
+      "prompt": "Implement the attached desktop product-overview mockup in the existing web app. The mockup viewport is 1440x900. At that viewport the page uses a centered 1200px max-width container, a 2fr/1fr content grid with a 24px gap, and a sticky summary card in the right column. No mobile mockup exists. The product must still work at 360px, 390px, 768px, and 1024px. Follow the mockup as closely as possible, but do not make the responsive implementation brittle. Use the project's existing components and design tokens where they match.",
+      "expected_output": "Implements a visually faithful 1440x900 screen using reusable layout constraints, infers responsive behavior from content needs, collapses the two-column layout safely, preserves primary information and actions, and verifies rendered results at the reference and representative responsive sizes.",
+      "trap": "A generic implementation may copy the desktop screenshot with absolute coordinates or fixed widths, choose arbitrary framework breakpoints without checking content, skip rendering, or redesign the mobile composition instead of preserving the mockup's intent.",
+      "files": [],
+      "assertions": [
+        {
+          "text": "Inspects the existing page, reusable components, design tokens, and project breakpoints before implementing",
+          "type": "content_check"
+        },
+        {
+          "text": "Treats 1440x900 as the reference viewport and reproduces the 1200px container, 2fr/1fr grid, 24px gap, hierarchy, and sticky summary behavior",
+          "type": "content_check"
+        },
+        {
+          "text": "Uses grid, flex, intrinsic sizing, and min/max constraints rather than absolute positioning for structural layout",
+          "type": "content_check"
+        },
+        {
+          "text": "Collapses the two-column composition into a usable single-column or reduced-column layout when content no longer fits",
+          "type": "content_check"
+        },
+        {
+          "text": "Preserves the primary content and primary action before wrapping, moving, collapsing, or hiding secondary elements",
+          "type": "content_check"
+        },
+        {
+          "text": "Uses content-driven responsive behavior and does not equate the listed test viewports with mandatory CSS breakpoints",
+          "type": "content_check"
+        },
+        {
+          "text": "Renders and checks the implementation at 1440x900 plus representative 1024px, 768px, 390px, and 360px viewports",
+          "type": "content_check"
+        },
+        {
+          "text": "Reports any deliberate deviation from the desktop mockup and explains the responsive or usability reason",
+          "type": "content_check"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "eval_name": "fullstack-missing-spendable-field",
+      "complexity": "HIGH",
+      "dimensions": [
+        "data_mapping",
+        "backend_adjustment",
+        "backward_compatibility",
+        "integration_testing"
+      ],
+      "prompt": "Implement a wallet mockup that adds an `Available to spend` amount beside the existing balance and reserved amounts. The frontend currently consumes `GET /api/v1/wallet`, whose response is `{ balance, reserved_amount, currency }`. Do not calculate the new value in the component: the backend already has `WalletService.GetSpendableAmount(ctx, walletID)`, which accounts for active holds and pending refunds. Existing web and mobile clients consume the current response. Connect the mockup to real data and make whatever backend-side adjustments are required.",
+      "expected_output": "Maps the new display through the full stack, adds an additive `available_to_spend` response field backed by the existing domain service, updates frontend types and states, preserves old response fields and consumers, avoids an unnecessary database migration, and verifies contract plus UI behavior.",
+      "trap": "A generic solution may compute balance minus reserved in the UI, hardcode the amount, rename or remove response fields, duplicate domain logic in the handler, or add a database column even though the value is already derived correctly by the service.",
+      "files": [],
+      "assertions": [
+        {
+          "text": "Traces and states the mapping from mockup element to frontend field, API response field, service method, and backend source",
+          "type": "content_check"
+        },
+        {
+          "text": "Adds `available_to_spend` as an additive response field while preserving `balance`, `reserved_amount`, and `currency`",
+          "type": "content_check"
+        },
+        {
+          "text": "Calls `WalletService.GetSpendableAmount` or its existing equivalent instead of duplicating spendable-balance business logic",
+          "type": "content_check"
+        },
+        {
+          "text": "Does not calculate `balance - reserved_amount` inside the UI component or client presentation layer",
+          "type": "content_check"
+        },
+        {
+          "text": "Updates the frontend API type, state mapping, formatting, loading, null/error handling, and rendered wallet field",
+          "type": "content_check"
+        },
+        {
+          "text": "Does not add a database migration or stored column for a value already derived by the domain service",
+          "type": "content_check"
+        },
+        {
+          "text": "Adds or updates backend contract tests and frontend integration tests for the new field",
+          "type": "content_check"
+        },
+        {
+          "text": "Verifies existing web and mobile consumers remain compatible with the additive response change",
+          "type": "content_check"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "eval_name": "visual-only-no-backend-churn",
+      "complexity": "LOW",
+      "dimensions": [
+        "scope_control",
+        "visual_fidelity",
+        "correct_layer"
+      ],
+      "prompt": "Update the account summary screen to match the new mockup. The only differences are card spacing, typography scale, icon placement, border radius, and the order of two existing summary cards. Every field in the mockup is already present in the current API response and frontend state. Keep all behavior and data contracts unchanged.",
+      "expected_output": "Makes a focused component and styling adjustment using existing tokens and data, reorders the existing cards safely, renders for comparison, and leaves API, backend, schema, and unrelated flows untouched.",
+      "trap": "An over-eager full-stack implementation may redesign the component system, rename API fields, introduce new DTOs, or claim backend work is required simply because the skill supports backend adjustment.",
+      "files": [],
+      "assertions": [
+        {
+          "text": "Confirms that all required fields and behavior already exist before editing",
+          "type": "content_check"
+        },
+        {
+          "text": "Limits changes to the relevant UI component, styling, tokens, or layout order",
+          "type": "content_check"
+        },
+        {
+          "text": "Does not change API contracts, backend services, database models, or migrations",
+          "type": "content_check"
+        },
+        {
+          "text": "Reuses existing components and design tokens when they can reproduce the mockup",
+          "type": "content_check"
+        },
+        {
+          "text": "Preserves all current interactions and data behavior",
+          "type": "content_check"
+        },
+        {
+          "text": "Renders the updated screen and compares the relevant visual properties against the mockup",
+          "type": "content_check"
+        },
+        {
+          "text": "Runs focused frontend checks without expanding into unrelated refactors",
+          "type": "content_check"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "eval_name": "preserve-checkout-shipping-flow",
+      "complexity": "HIGH",
+      "dimensions": [
+        "protected_flow",
+        "responsive_reasoning",
+        "business_invariants",
+        "regression_testing"
+      ],
+      "prompt": "Implement the new mobile checkout mockup. It was captured after an address and shipping method had already been selected, so the image only shows a compact delivery summary. The existing checkout supports courier delivery, store pickup, and COD delivery, and the user explicitly says those flows must remain available. Desktop checkout must continue to work. Make the implementation match the mobile mockup without removing or changing those fulfillment flows.",
+      "expected_output": "Recognizes that the mockup represents one checkout state, preserves all fulfillment options and backend behavior, uses a compact editable summary after selection, keeps selection accessible when incomplete or changed, adapts desktop separately, and regression-tests all fulfillment paths.",
+      "trap": "Literal screenshot copying may delete the shipping selector, assume courier-only checkout, remove pickup or COD branches, or alter backend status transitions because the captured mockup does not display them.",
+      "files": [],
+      "assertions": [
+        {
+          "text": "Inspects the existing checkout state machine, fulfillment options, API behavior, and desktop flow before implementing",
+          "type": "content_check"
+        },
+        {
+          "text": "Interprets the compact delivery block as the selected-state presentation, not evidence that selection flows should be removed",
+          "type": "content_check"
+        },
+        {
+          "text": "Preserves courier delivery, store pickup, and COD delivery branches and their existing business rules",
+          "type": "content_check"
+        },
+        {
+          "text": "Keeps a clear way to select or change fulfillment details when the state is incomplete or the user edits the summary",
+          "type": "content_check"
+        },
+        {
+          "text": "Matches the compact mobile mockup while maintaining a coherent desktop checkout layout",
+          "type": "content_check"
+        },
+        {
+          "text": "Does not remove endpoints, backend fields, state transitions, or validations required by existing fulfillment flows",
+          "type": "content_check"
+        },
+        {
+          "text": "Regression-tests all three fulfillment flows, including validation and error states",
+          "type": "content_check"
+        },
+        {
+          "text": "Documents any deliberate visual addition needed to keep the protected flows discoverable",
+          "type": "content_check"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "eval_name": "add-display-name-with-compatibility",
+      "complexity": "HIGH",
+      "dimensions": [
+        "contract_evolution",
+        "database_migration",
+        "fallback_behavior",
+        "authorization"
+      ],
+      "prompt": "The new profile mockup distinguishes `Display name` from the user's legal `Full name`. Display name is editable by the user and may be public; legal full name remains required for KYC and must not be overwritten. The current database and API only have `full_name`, which is consumed by older web and mobile clients. Implement the mockup and the required backend changes safely.",
+      "expected_output": "Adds a distinct nullable display-name field through migration, model, validation, authorization, API, and frontend; preserves legal full name and old consumers; uses a safe fallback for existing rows; and verifies privacy, compatibility, and migration behavior.",
+      "trap": "A superficial implementation may relabel full_name as display name, rename the existing API field, overwrite KYC data, expose legal names publicly without review, require an unsafe migration default, or forget older clients.",
+      "files": [],
+      "assertions": [
+        {
+          "text": "Treats `display_name` and `full_name` as separate domain concepts and never overwrites legal KYC data",
+          "type": "content_check"
+        },
+        {
+          "text": "Adds a safe nullable or otherwise backward-compatible database field and migration for existing rows",
+          "type": "content_check"
+        },
+        {
+          "text": "Preserves the existing `full_name` API field for older clients",
+          "type": "content_check"
+        },
+        {
+          "text": "Adds `display_name` additively and defines a deliberate fallback to `full_name` or another approved value for legacy rows",
+          "type": "content_check"
+        },
+        {
+          "text": "Updates model, DTO, service, validation, authorization, and frontend form/state mapping at the correct boundaries",
+          "type": "content_check"
+        },
+        {
+          "text": "Validates length, normalization, allowed characters, and uniqueness only if the product contract requires uniqueness",
+          "type": "content_check"
+        },
+        {
+          "text": "Checks privacy implications before exposing legal full names as public fallback data",
+          "type": "content_check"
+        },
+        {
+          "text": "Tests migration behavior, existing users, old clients, edit permissions, API contracts, and frontend states",
+          "type": "content_check"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "eval_name": "complete-async-action-states",
+      "complexity": "MEDIUM",
+      "dimensions": [
+        "interaction_states",
+        "error_handling",
+        "duplicate_submission",
+        "accessibility"
+      ],
+      "prompt": "Implement a reservation card from the mockup. The primary button calls the existing `POST /reservations` endpoint. The mockup shows only the idle and success appearance. The endpoint can return validation errors, 401, 409 conflict, and 500; requests can be slow; and users sometimes double-click. Inventory may change while the card is open. Use the existing API and backend behavior.",
+      "expected_output": "Implements the visual states from the mockup and completes the real state machine around the existing endpoint: loading, disabled/submitting, validation, unauthorized, conflict, server error, success, and stale inventory refresh, with duplicate-submission protection and accessible feedback.",
+      "trap": "A screenshot-focused solution may only implement idle/success styling, allow duplicate requests, turn every error into a generic toast, optimistically reserve without rollback, or invent a new backend endpoint.",
+      "files": [],
+      "assertions": [
+        {
+          "text": "Uses the existing `POST /reservations` contract rather than creating an unnecessary endpoint",
+          "type": "content_check"
+        },
+        {
+          "text": "Implements idle, loading, disabled/submitting, success, validation error, unauthorized, conflict, and server-error states",
+          "type": "content_check"
+        },
+        {
+          "text": "Prevents duplicate submission while a reservation request is in flight",
+          "type": "content_check"
+        },
+        {
+          "text": "Maps 401, 409, validation, and 500 responses to distinct user-appropriate behavior",
+          "type": "content_check"
+        },
+        {
+          "text": "Refreshes or reconciles stale inventory after a conflict or completed reservation",
+          "type": "content_check"
+        },
+        {
+          "text": "Avoids unsafe optimistic success unless a reliable rollback path already exists",
+          "type": "content_check"
+        },
+        {
+          "text": "Provides accessible status, focus, and error feedback rather than relying on color alone",
+          "type": "content_check"
+        },
+        {
+          "text": "Tests slow requests, double-clicks, each documented response class, and changing inventory",
+          "type": "content_check"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "eval_name": "audit-only-impact-map",
+      "complexity": "MEDIUM",
+      "dimensions": [
+        "mode_selection",
+        "read_only_discipline",
+        "evidence",
+        "impact_analysis"
+      ],
+      "prompt": "Audit this mockup against the current implementation and tell me what frontend, API, backend, and database changes would be required. Do not change code yet. I need an evidence-backed impact assessment before deciding whether to build it.",
+      "expected_output": "Performs a read-only inspection, maps mockup elements and actions to current implementation and contracts, distinguishes confirmed reuse from genuine gaps, identifies responsive and regression risks, and reports evidence without modifying repository or external state.",
+      "trap": "An execution-biased agent may start implementing because Mockerize is an implementation skill, produce a generic plan without inspecting real code, or assert backend changes solely from the mockup.",
+      "files": [],
+      "assertions": [
+        {
+          "text": "Keeps the repository and external systems unchanged because the user requested an audit only",
+          "type": "content_check"
+        },
+        {
+          "text": "Inspects the actual mockup, current UI, reusable components, frontend state, API contracts, services, models, and migrations",
+          "type": "content_check"
+        },
+        {
+          "text": "Maps each relevant mockup element and action through UI, frontend data, API, backend, and persistence",
+          "type": "content_check"
+        },
+        {
+          "text": "Separates visual, layout, content/data, interaction, and contract/domain mismatches",
+          "type": "content_check"
+        },
+        {
+          "text": "Distinguishes confirmed backend gaps from needs already supported by current data or services",
+          "type": "content_check"
+        },
+        {
+          "text": "Identifies responsive behavior, protected flows, compatibility risks, and required verification",
+          "type": "content_check"
+        },
+        {
+          "text": "Cites concrete repository evidence such as files, symbols, endpoints, fields, or schema objects",
+          "type": "content_check"
+        },
+        {
+          "text": "Does not present speculative redesign ideas as required scope",
+          "type": "content_check"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "eval_name": "role-gated-refund-action",
+      "complexity": "HIGH",
+      "dimensions": [
+        "material_ambiguity",
+        "authorization",
+        "surface_inference",
+        "security"
+      ],
+      "prompt": "Implement the attached order-detail mockup. It includes a prominent `Refund order` button, but the mockup is not labeled as customer, merchant, or admin. In the current product, refunds are restricted by the backend to `finance_admin`; customer and merchant order-detail screens share several components. The request does not authorize changing refund permissions.",
+      "expected_output": "Recognizes the materially ambiguous target surface, does not weaken backend authorization, resolves or safely gates the action by role, keeps shared components reusable, and verifies that unauthorized users neither see nor successfully invoke the refund flow.",
+      "trap": "Literal mockup implementation may render the refund action for every role, move authorization into frontend visibility only, change backend policy without permission, or assume the screen's audience without inspecting routes and consumers.",
+      "files": [],
+      "assertions": [
+        {
+          "text": "Inspects the routes, shared order-detail consumers, permission model, and refund endpoint before editing",
+          "type": "content_check"
+        },
+        {
+          "text": "Recognizes that the target role or surface is materially ambiguous and asks for clarification or proceeds only with safe finance-admin gating",
+          "type": "content_check"
+        },
+        {
+          "text": "Does not expand or weaken the existing backend `finance_admin` authorization rule",
+          "type": "content_check"
+        },
+        {
+          "text": "Uses frontend visibility as usability behavior, not as the sole security control",
+          "type": "content_check"
+        },
+        {
+          "text": "Keeps shared order-detail components role-aware without duplicating the entire screen",
+          "type": "content_check"
+        },
+        {
+          "text": "Ensures customer and merchant users cannot invoke the refund action even through a direct request",
+          "type": "content_check"
+        },
+        {
+          "text": "Verifies finance-admin success plus unauthorized and hidden-action cases",
+          "type": "content_check"
+        },
+        {
+          "text": "Explains any deliberate deviation from the unlabeled mockup as an authorization invariant",
+          "type": "content_check"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "eval_name": "visual-adjustment-loop",
+      "complexity": "MEDIUM",
+      "dimensions": [
+        "rendered_verification",
+        "visual_prioritization",
+        "iteration",
+        "responsive_regression"
+      ],
+      "prompt": "The screen has been implemented from the supplied 390x844 mockup, but it still looks noticeably different. Finish the implementation so it matches as closely as practical. The app can be run locally and the screen is reachable with seeded data. Do not stop after reviewing the CSS.",
+      "expected_output": "Runs the real screen, captures and compares the 390x844 rendering, fixes mismatches in impact order through repeated render-adjust cycles, then checks responsive regressions and reports evidence of the final comparison.",
+      "trap": "A code-only review may tweak a few obvious CSS values and declare completion without opening the app, comparing screenshots, ranking geometry before decoration, or rechecking other viewports.",
+      "files": [],
+      "assertions": [
+        {
+          "text": "Runs the local app and reaches the real screen with representative seeded data",
+          "type": "content_check"
+        },
+        {
+          "text": "Captures the implementation at the exact 390x844 reference viewport",
+          "type": "content_check"
+        },
+        {
+          "text": "Compares the render against the supplied mockup using side-by-side, overlay, image diff, or equivalent visual evidence",
+          "type": "content_check"
+        },
+        {
+          "text": "Prioritizes page geometry and hierarchy before component dimensions, spacing, typography, and decorative details",
+          "type": "content_check"
+        },
+        {
+          "text": "Performs at least one re-render after adjustments rather than relying on code inspection",
+          "type": "content_check"
+        },
+        {
+          "text": "Fixes each mismatch at its owning visual, layout, data, interaction, or contract layer",
+          "type": "content_check"
+        },
+        {
+          "text": "Rechecks at least one smaller or larger viewport after reference-viewport corrections",
+          "type": "content_check"
+        },
+        {
+          "text": "Reports remaining deliberate differences and the verification evidence",
+          "type": "content_check"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "eval_name": "long-content-and-localization",
+      "complexity": "MEDIUM",
+      "dimensions": [
+        "responsive_content",
+        "localization",
+        "extreme_data",
+        "accessibility"
+      ],
+      "prompt": "Implement the compact transaction-list mockup. The mockup uses short English labels and names, but the production app is localized and can show Indonesian, German, and Japanese text, merchant names up to 120 characters, large formatted amounts, missing avatars, and optional descriptions. Match the compact visual intent without breaking real content.",
+      "expected_output": "Preserves the compact hierarchy while replacing rigid text assumptions with deliberate wrapping, truncation, min-width, line-clamp, tooltip or expansion behavior; handles extreme and missing data; and verifies multiple locales and viewport sizes without hiding critical information.",
+      "trap": "A pixel-only implementation may use fixed card heights, truncate amounts or transaction status, overlap controls, assume Latin text widths, hardcode English copy, or treat missing avatars and descriptions as impossible.",
+      "files": [],
+      "assertions": [
+        {
+          "text": "Uses localization keys and existing formatting utilities rather than hardcoded mockup text",
+          "type": "content_check"
+        },
+        {
+          "text": "Defines which fields may wrap, truncate, clamp, expand, or remain fully visible based on information priority",
+          "type": "content_check"
+        },
+        {
+          "text": "Never truncates or obscures critical transaction amount, status, or primary action information",
+          "type": "content_check"
+        },
+        {
+          "text": "Avoids rigid fixed heights that break with longer translations or optional descriptions",
+          "type": "content_check"
+        },
+        {
+          "text": "Handles 120-character merchant names, large amounts, missing avatars, null descriptions, and non-Latin text",
+          "type": "content_check"
+        },
+        {
+          "text": "Maintains usable focus, reading order, and touch targets when content wraps",
+          "type": "content_check"
+        },
+        {
+          "text": "Tests representative Indonesian, German, and Japanese content at compact mobile and wider viewports",
+          "type": "content_check"
+        },
+        {
+          "text": "Explains visual deviations that are necessary to preserve real content and accessibility",
+          "type": "content_check"
+        }
+      ]
+    }
+  ]
+}

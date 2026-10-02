@@ -1,0 +1,26 @@
+{
+  "name": "cso-thinking",
+  "version": "0.2.0",
+  "description": "Single-command security audit (/cso-audit) that adapts to any target — frontend, backend (any language), infrastructure, databases, Android, iOS, or generic software. Auto-detects relevant profiles, runs a hybrid scan (external tools + checklist review), produces a composite security score (0–100 + letter grade), and emits SECURITY_AUDIT.md + SECURITY_AUDIT.html with a fix-ready audit list.",
+  "author": {
+    "name": "Dodi (Verzth)",
+    "url": "https://github.com/verzth"
+  },
+  "homepage": "https://github.com/verzth/skills/tree/main/skills/cso-thinking",
+  "repository": "https://github.com/verzth/skills",
+  "license": "MIT",
+  "keywords": [
+    "security",
+    "audit",
+    "cso",
+    "owasp",
+    "masvs",
+    "vulnerability",
+    "sast",
+    "pentest",
+    "security-score",
+    "infra",
+    "android",
+    "ios"
+  ]
+}

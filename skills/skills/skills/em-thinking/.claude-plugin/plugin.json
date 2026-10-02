@@ -1,0 +1,24 @@
+{
+  "name": "em-thinking",
+  "version": "0.4.1",
+  "description": "AI-First Engineering Management — opinionated skill bundle for tech-lead Engineering Managers. Includes /em-plan (architectural plan with risk tier, scope challenge, invariants, failure modes), /em-works (execution-ready handoff package — task breakdown, parallelization lanes, env/secrets spec, deploy plan artifact), and /em-review (Mode A code review + Mode B hypothesis-driven debug).",
+  "author": {
+    "name": "Dodi (Verzth)",
+    "url": "https://github.com/verzth"
+  },
+  "homepage": "https://github.com/verzth/skills/tree/main/em-thinking",
+  "repository": "https://github.com/verzth/skills",
+  "license": "MIT",
+  "keywords": [
+    "engineering-management",
+    "em",
+    "ai-first",
+    "architecture",
+    "risk-tiering",
+    "code-review",
+    "debug",
+    "cognitive-patterns",
+    "deployment-prep",
+    "handoff"
+  ]
+}

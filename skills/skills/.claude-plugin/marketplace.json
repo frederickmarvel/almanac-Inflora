@@ -1,0 +1,182 @@
+{
+  "name": "verzth-skills",
+  "owner": {
+    "name": "Dodi (Verzth)",
+    "email": "silveriusdodi@gmail.com",
+    "url": "https://github.com/verzth"
+  },
+  "metadata": {
+    "description": "Verzth's curated Claude Code skills \u2014 humanoid-thinking framework, Go microservices, AI-First Product Management, AI-First Engineering Management, and more. Available via npm and Claude Code plugin marketplace.",
+    "version": "1.13.0"
+  },
+  "plugins": [
+    {
+      "name": "humanoid-thinking",
+      "source": "./skills/humanoid-thinking",
+      "description": "Human cognitive framework \u2014 default mode for all interactions. Intuition-first thinking validated by logic. Confirms over assumes when ambiguous.",
+      "version": "1.1.1",
+      "author": {
+        "name": "Dodi (Verzth)"
+      },
+      "category": "thinking-framework",
+      "tags": [
+        "thinking",
+        "framework",
+        "common-sense",
+        "cognitive",
+        "default-behavior"
+      ],
+      "homepage": "https://github.com/verzth/skills/tree/main/skills/humanoid-thinking"
+    },
+    {
+      "name": "golang-developer",
+      "source": "./skills/golang-developer",
+      "description": "Go microservices development with Clean Architecture, GORM, gRPC + grpc-gateway, Wire DI, NATS JetStream, Redis, MySQL. Covers scaffolding, code review, debugging, testing, restructuring existing projects into the target layout (inventory → mapping → git mv → regenerate → verify), and a strict proto workflow — buf mandatory (lint as blocking pre-commit gate, breaking-change detection vs main), protoc-go-inject-tag for validate/json struct tags via // @gotags magic comments, make protogen always over raw buf generate so validation tags don't get wiped.",
+      "version": "1.5.0",
+      "author": {
+        "name": "Dodi (Verzth)"
+      },
+      "category": "engineering",
+      "tags": [
+        "go",
+        "golang",
+        "microservices",
+        "grpc",
+        "clean-architecture"
+      ],
+      "homepage": "https://github.com/verzth/skills/tree/main/skills/golang-developer"
+    },
+    {
+      "name": "pm-thinking",
+      "source": "./skills/pm-thinking",
+      "description": "AI-First Product Management bundle \u2014 pm-discover (synthesize research), pm-works (write PRD with Tech Implications), pm-decide (multi-mode: prio/review/stakeholder/retro). Tech-literate, with explicit handoff to engineer-manager. English-only since v1.5.0.",
+      "version": "0.2.1",
+      "author": {
+        "name": "Dodi (Verzth)"
+      },
+      "category": "product-management",
+      "tags": [
+        "pm",
+        "ai-first",
+        "prd",
+        "discovery",
+        "prioritization",
+        "retro",
+        "stakeholder-update"
+      ],
+      "homepage": "https://github.com/verzth/skills/tree/main/skills/pm-thinking"
+    },
+    {
+      "name": "em-thinking",
+      "source": "./skills/em-thinking",
+      "description": "AI-First Engineering Management bundle \u2014 em-plan (architectural plan with risk tier T0-T3, scope challenge, invariants, failure modes, test strategy, dual output edd.md + edd.html), em-works (execution-ready handoff: atomic tickets with AI compute class + token estimates, worktree lanes, env/secrets spec, deploy plan artifact, dual eng-works.md + eng-works.html), em-review (Mode A code review + Mode B hypothesis-driven debug, dual .md + .html for all modes). Companion to pm-thinking. Role-based handoff (engineer/security-reviewer/qa-reviewer/release-engineer/devops). English-only since v1.5.0.",
+      "version": "0.4.1",
+      "author": {
+        "name": "Dodi (Verzth)"
+      },
+      "category": "engineering-management",
+      "tags": [
+        "em",
+        "engineering-management",
+        "ai-first",
+        "architecture",
+        "edd",
+        "code-review",
+        "debug",
+        "risk-tiering",
+        "cognitive-patterns",
+        "deployment-prep"
+      ],
+      "homepage": "https://github.com/verzth/skills/tree/main/skills/em-thinking"
+    },
+    {
+      "name": "public-awareness",
+      "source": "./skills/public-awareness",
+      "description": "Artifact integrity guardrail \u2014 keeps internal working context (progress notes, TODOs, uncertainty, session reasoning) out of public-facing artifacts: websites, API specs, technical documentation, databases, and shared documents. Routes internal context to TodoWrite (in-session) or memory (cross-session). Applies to all contexts where AI writes to any external or shared system.",
+      "version": "1.0.0",
+      "author": {
+        "name": "Dodi (Verzth)"
+      },
+      "category": "guardrail",
+      "tags": [
+        "guardrail",
+        "artifact-integrity",
+        "public-private",
+        "context-boundary",
+        "internal-notes",
+        "workspace-hygiene"
+      ],
+      "homepage": "https://github.com/verzth/skills/tree/main/skills/public-awareness"
+    },
+    {
+      "name": "board-thinking",
+      "source": "./skills/board-thinking",
+      "description": "Board Thinking \u2014 convene a virtual board of 5-7 stakeholder advisors (Customer, Investor, Operator, Contrarian, Time Traveler + Compliance/Architect domain seats) to stress-test an idea from distinct lenses. Includes /onboard (multi-perspective idea diagnostic with two rounds of questions plus cross-examination plus board verdict). Bilingual runtime output (Indonesian/English mix; brand and section anchors stay English). Sits between raw ideation and PRD/architecture work \u2014 the bridge between an unstructured idea and a structured plan.",
+      "version": "0.1.1",
+      "author": {
+        "name": "Dodi (Verzth)"
+      },
+      "category": "thinking-framework",
+      "tags": [
+        "board-thinking",
+        "ideation",
+        "diagnostic",
+        "multi-perspective",
+        "stress-test",
+        "advisor",
+        "pre-prd",
+        "founder",
+        "ai-first",
+        "cross-examination"
+      ],
+      "homepage": "https://github.com/verzth/skills/tree/main/skills/board-thinking"
+    },
+    {
+      "name": "cso-thinking",
+      "source": "./skills/cso-thinking",
+      "description": "Chief Security Officer mindset \u2014 single-command security audit (/cso-audit) that adapts to any target: frontend, backend (any language), infrastructure, databases, Android, iOS, or generic software. Auto-detects relevant profiles from the working directory, runs a hybrid scan (external tools where installed + checklist review where not), enriches Critical/High findings with live exploitability signals from free public APIs (OSV.dev, EPSS, CISA KEV, NVD), and emits a composite security score (0\u2013100 + letter grade) plus dual output: SECURITY_AUDIT.md (agent handoff) and SECURITY_AUDIT.html (human review). Grounded in OWASP Top 10 / API Top 10 / ASVS / MASVS, CIS benchmarks, NIST SSDF, SLSA.",
+      "version": "0.2.0",
+      "author": {
+        "name": "Dodi (Verzth)"
+      },
+      "category": "security",
+      "tags": [
+        "security",
+        "audit",
+        "owasp",
+        "masvs",
+        "cis",
+        "vulnerability",
+        "score",
+        "checklist",
+        "supply-chain",
+        "secrets",
+        "cso",
+        "single-command"
+      ],
+      "homepage": "https://github.com/verzth/skills/tree/main/skills/cso-thinking"
+    },
+    {
+      "name": "mockerize",
+      "source": "./skills/mockerize",
+      "description": "Mockup-to-production implementation skill for Figma, Pencil, screenshots, images, and design specs. Reproduces the reference viewport with high visual fidelity, infers responsive constraints across device sizes, maps UI fields and actions through frontend state and API contracts to backend services and persistence, makes minimal backward-compatible backend adjustments, and finishes with visual comparison plus regression verification.",
+      "version": "0.1.0",
+      "author": {
+        "name": "Dodi (Verzth)"
+      },
+      "category": "engineering",
+      "tags": [
+        "mockup",
+        "frontend",
+        "responsive-ui",
+        "figma",
+        "pencil",
+        "visual-fidelity",
+        "design-to-code",
+        "backend-integration",
+        "full-stack"
+      ],
+      "homepage": "https://github.com/verzth/skills/tree/main/skills/mockerize"
+    }
+  ]
+}

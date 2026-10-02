@@ -1,0 +1,20 @@
+{
+  "name": "public-awareness",
+  "version": "1.0.0",
+  "description": "Artifact integrity guardrail — keeps internal working context (progress notes, TODOs, uncertainty, session reasoning) out of public-facing artifacts: websites, API specs, documentation, databases, and shared documents. Routes internal context to TodoWrite or memory instead.",
+  "author": {
+    "name": "Dodi (Verzth)",
+    "url": "https://github.com/verzth"
+  },
+  "homepage": "https://github.com/verzth/skills/tree/main/skills/public-awareness",
+  "repository": "https://github.com/verzth/skills",
+  "license": "MIT",
+  "keywords": [
+    "guardrail",
+    "artifact-integrity",
+    "public-private",
+    "context-boundary",
+    "internal-notes",
+    "workspace-hygiene"
+  ]
+}

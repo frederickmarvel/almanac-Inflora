@@ -1,0 +1,4 @@
+interface:
+  display_name: "Mockerize"
+  short_description: "Turn mockups into responsive production UI"
+  default_prompt: "Use $mockerize to implement this mockup as responsive production UI with real frontend-backend integration."

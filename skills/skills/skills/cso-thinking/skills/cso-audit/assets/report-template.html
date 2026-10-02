@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Security Audit — {{AUDIT_DATE}}</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --bg-alt: #f6f8fa;
+    --bg-card: #ffffff;
+    --fg: #1f2328;
+    --fg-muted: #57606a;
+    --border: #d0d7de;
+    --border-strong: #afb8c1;
+    --accent: #0969da;
+    --critical: #cf222e;
+    --high: #d1242f;
+    --medium: #bf8700;
+    --low: #1a7f37;
+    --info: #6e7781;
+    --code-bg: #f6f8fa;
+    --shadow: 0 1px 3px rgba(0,0,0,0.05);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0d1117;
+      --bg-alt: #161b22;
+      --bg-card: #161b22;
+      --fg: #e6edf3;
+      --fg-muted: #8d96a0;
+      --border: #30363d;
+      --border-strong: #484f58;
+      --accent: #58a6ff;
+      --critical: #f85149;
+      --high: #ff7b72;
+      --medium: #d29922;
+      --low: #3fb950;
+      --info: #8b949e;
+      --code-bg: #0d1117;
+      --shadow: 0 1px 3px rgba(0,0,0,0.4);
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', sans-serif;
+    background: var(--bg);
+    color: var(--fg);
+    line-height: 1.5;
+    font-size: 14px;
+  }
+  .container { max-width: 1080px; margin: 0 auto; padding: 32px 24px; }
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+    margin-bottom: 32px;
+    padding-bottom: 24px;
+    border-bottom: 1px solid var(--border);
+  }
+  .header h1 {
+    margin: 0 0 4px 0;
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+  .header .meta {
+    color: var(--fg-muted);
+    font-size: 13px;
+  }
+  .score-card {
+    display: flex;
+    align-items: stretch;
+    gap: 24px;
+    padding: 24px;
+    background: var(--bg-alt);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    margin-bottom: 24px;
+  }
+  .score-circle {
+    flex-shrink: 0;
+    width: 120px;
+    height: 120px;
+    border-radius: 50%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-weight: 700;
+    box-shadow: var(--shadow);
+  }
+  .score-circle.grade-A { background: linear-gradient(135deg, #1a7f37, #2da44e); }
+  .score-circle.grade-B { background: linear-gradient(135deg, #218bff, #58a6ff); }
+  .score-circle.grade-C { background: linear-gradient(135deg, #bf8700, #d29922); }
+  .score-circle.grade-D { background: linear-gradient(135deg, #b35900, #d97706); }
+  .score-circle.grade-F { background: linear-gradient(135deg, #cf222e, #f85149); }
+  .score-circle .num { font-size: 36px; line-height: 1; }
+  .score-circle .grade { font-size: 16px; margin-top: 4px; letter-spacing: 0.05em; }
+  .score-meta { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 8px; }
+  .score-meta-row { display: flex; gap: 12px; font-size: 13px; }
+  .score-meta-row .label { color: var(--fg-muted); min-width: 100px; }
+  .score-meta-row .value { color: var(--fg); }
+  .severity-summary {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 12px;
+    margin-bottom: 32px;
+  }
+  .sev-pill {
+    padding: 16px 12px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: var(--bg-card);
+    text-align: center;
+    box-shadow: var(--shadow);
+  }
+  .sev-pill .count { font-size: 28px; font-weight: 700; line-height: 1; }
+  .sev-pill .label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--fg-muted);
+    margin-top: 6px;
+    font-weight: 500;
+  }
+  .sev-pill.critical { border-color: var(--critical); }
+  .sev-pill.critical .count { color: var(--critical); }
+  .sev-pill.high { border-color: var(--high); }
+  .sev-pill.high .count { color: var(--high); }
+  .sev-pill.medium { border-color: var(--medium); }
+  .sev-pill.medium .count { color: var(--medium); }
+  .sev-pill.low { border-color: var(--low); }
+  .sev-pill.low .count { color: var(--low); }
+  .sev-pill.info .count { color: var(--info); }
+  h2 {
+    margin: 32px 0 16px 0;
+    font-size: 18px;
+    font-weight: 600;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--border);
+  }
+  .finding {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    margin-bottom: 12px;
+    background: var(--bg-card);
+    overflow: hidden;
+    box-shadow: var(--shadow);
+  }
+  .finding-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 16px;
+    cursor: pointer;
+    user-select: none;
+    background: var(--bg-card);
+  }
+  .finding-header:hover { background: var(--bg-alt); }
+  .finding[data-severity="critical"] { border-left: 3px solid var(--critical); }
+  .finding[data-severity="high"]     { border-left: 3px solid var(--high); }
+  .finding[data-severity="medium"]   { border-left: 3px solid var(--medium); }
+  .finding[data-severity="low"]      { border-left: 3px solid var(--low); }
+  .finding[data-severity="info"]     { border-left: 3px solid var(--info); }
+  .sev-tag {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: white;
+    min-width: 60px;
+    text-align: center;
+  }
+  .sev-tag.critical { background: var(--critical); }
+  .sev-tag.high     { background: var(--high); }
+  .sev-tag.medium   { background: var(--medium); }
+  .sev-tag.low      { background: var(--low); }
+  .sev-tag.info     { background: var(--info); }
+  .finding-id {
+    font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+    font-size: 12px;
+    color: var(--fg-muted);
+    min-width: 50px;
+  }
+  .finding-title { flex: 1; font-weight: 500; }
+  .finding-profile {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    background: var(--bg-alt);
+    color: var(--fg-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    border: 1px solid var(--border);
+  }
+  .toggle { color: var(--fg-muted); transition: transform 0.15s; font-size: 12px; }
+  .finding.open .toggle { transform: rotate(90deg); }
+  .finding-body {
+    display: none;
+    padding: 16px;
+    border-top: 1px solid var(--border);
+    background: var(--bg-alt);
+  }
+  .finding.open .finding-body { display: block; }
+  .field { margin-bottom: 14px; }
+  .field-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--fg-muted);
+    font-weight: 600;
+    margin-bottom: 4px;
+  }
+  .field-value { font-size: 13px; }
+  code, .mono {
+    font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+    font-size: 12.5px;
+    background: var(--code-bg);
+    padding: 1px 5px;
+    border-radius: 3px;
+    border: 1px solid var(--border);
+  }
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 12px 14px;
+    overflow-x: auto;
+    margin: 6px 0 0 0;
+    font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+    font-size: 12.5px;
+    line-height: 1.5;
+  }
+  .remediation-block {
+    position: relative;
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 12px 14px;
+    margin-top: 6px;
+  }
+  .remediation-prompt {
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+    font-size: 12.5px;
+    line-height: 1.55;
+    margin: 0;
+  }
+  .copy-btn {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: var(--bg-card);
+    color: var(--fg);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 4px 10px;
+    font-size: 11px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: all 0.15s;
+  }
+  .copy-btn:hover { background: var(--accent); color: white; border-color: var(--accent); }
+  .copy-btn.copied { background: var(--low); color: white; border-color: var(--low); }
+  .standards { display: flex; flex-wrap: wrap; gap: 6px; }
+  .standard-chip {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    font-size: 11px;
+    color: var(--fg-muted);
+  }
+  .filter-bar {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+  }
+  .filter-btn {
+    padding: 6px 14px;
+    border: 1px solid var(--border);
+    background: var(--bg-card);
+    color: var(--fg);
+    border-radius: 999px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 500;
+  }
+  .filter-btn.active { background: var(--accent); color: white; border-color: var(--accent); }
+  .filter-btn:hover:not(.active) { background: var(--bg-alt); }
+  .limitations {
+    margin-top: 32px;
+    padding: 16px 20px;
+    background: var(--bg-alt);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+  }
+  .limitations h2 { margin-top: 0; border: none; padding: 0; }
+  .footer {
+    margin-top: 48px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+    color: var(--fg-muted);
+    font-size: 12px;
+    text-align: center;
+  }
+  .empty-state {
+    padding: 24px;
+    text-align: center;
+    color: var(--fg-muted);
+    background: var(--bg-alt);
+    border: 1px dashed var(--border);
+    border-radius: 8px;
+    font-style: italic;
+  }
+  @media print {
+    .copy-btn, .filter-bar { display: none; }
+    .finding-body { display: block !important; }
+    .finding { break-inside: avoid; box-shadow: none; }
+    body { background: white; color: black; }
+    .container { padding: 0; }
+  }
+  @media (max-width: 720px) {
+    .header { flex-direction: column; align-items: flex-start; }
+    .severity-summary { grid-template-columns: repeat(3, 1fr); }
+    .score-card { flex-direction: column; align-items: center; text-align: center; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <header class="header">
+    <div>
+      <h1>Security Audit</h1>
+      <div class="meta">
+        Generated <span id="audit-date">{{AUDIT_DATE}}</span>
+        &middot; <span id="cwd-label"></span>
+      </div>
+    </div>
+    <div class="meta" style="text-align: right;">
+      <div>Tools run: <span class="mono">{{TOOLS_RUN}}</span></div>
+      <div>Tools missing: <span class="mono">{{TOOLS_MISSING}}</span></div>
+    </div>
+  </header>
+
+  <section class="score-card">
+    <div class="score-circle" id="score-circle">
+      <div class="num">{{SCORE}}</div>
+      <div class="grade">{{GRADE}}</div>
+    </div>
+    <div class="score-meta">
+      <div class="score-meta-row"><span class="label">Scope</span><span class="value">{{SCOPE}}</span></div>
+      <div class="score-meta-row"><span class="label">Tools run</span><span class="value mono">{{TOOLS_RUN}}</span></div>
+      <div class="score-meta-row"><span class="label">Tools missing</span><span class="value mono">{{TOOLS_MISSING}}</span></div>
+      <div class="score-meta-row"><span class="label">Audit time</span><span class="value">{{AUDIT_DATE}}</span></div>
+    </div>
+  </section>
+
+  <section class="severity-summary" id="severity-summary"></section>
+
+  <div class="filter-bar" id="filter-bar">
+    <button class="filter-btn active" data-filter="all">All</button>
+    <button class="filter-btn" data-filter="critical">Critical</button>
+    <button class="filter-btn" data-filter="high">High</button>
+    <button class="filter-btn" data-filter="medium">Medium</button>
+    <button class="filter-btn" data-filter="low">Low</button>
+    <button class="filter-btn" data-filter="info">Info</button>
+  </div>
+
+  <section id="findings-container"></section>
+
+  <section class="limitations">
+    <h2>Scope &amp; limitations</h2>
+    <div id="limitations-body">{{LIMITATIONS}}</div>
+  </section>
+
+  <footer class="footer">
+    Generated by <span class="mono">/cso-audit</span> &middot; cso-thinking plugin
+  </footer>
+</div>
+
+<script>
+  const COUNTS = {{COUNTS_JSON}};
+  const FINDINGS = {{FINDINGS_JSON}};
+  const SCORE = {{SCORE}};
+  const GRADE = "{{GRADE}}";
+
+  // Set grade color on circle
+  (function() {
+    const circle = document.getElementById('score-circle');
+    const gradeLetter = GRADE.charAt(0);
+    circle.classList.add('grade-' + gradeLetter);
+  })();
+
+  // Render severity summary
+  (function() {
+    const order = ['critical', 'high', 'medium', 'low', 'info'];
+    const labels = {
+      critical: 'Critical', high: 'High', medium: 'Medium', low: 'Low', info: 'Info'
+    };
+    const html = order.map(s => `
+      <div class="sev-pill ${s}">
+        <div class="count">${COUNTS[s] || 0}</div>
+        <div class="label">${labels[s]}</div>
+      </div>
+    `).join('');
+    document.getElementById('severity-summary').innerHTML = html;
+  })();
+
+  // Escape HTML
+  function esc(s) {
+    if (s == null) return '';
+    return String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  // Render a finding
+  function renderFinding(f) {
+    const locStr = f.location
+      ? (f.location.file ? esc(f.location.file) + (f.location.line ? ':' + f.location.line : '') : esc(JSON.stringify(f.location)))
+      : 'n/a';
+    const snippet = f.location && f.location.snippet
+      ? `<pre>${esc(f.location.snippet)}</pre>` : '';
+    const standards = (f.standard || []).map(s =>
+      `<span class="standard-chip">${esc(s)}</span>`
+    ).join('');
+    const sourceLine = f.source
+      ? `${esc(f.source.type)} &middot; ${esc(f.source.name)}${f.source.rule_id ? ' &middot; ' + esc(f.source.rule_id) : ''}${f.source.version ? ' (v' + esc(f.source.version) + ')' : ''}`
+      : 'unknown';
+    const refsHtml = (f.references || []).length
+      ? '<ul style="margin:4px 0 0 0; padding-left: 20px;">' +
+        f.references.map(r => `<li><a href="${esc(r)}" target="_blank" rel="noopener">${esc(r)}</a></li>`).join('') +
+        '</ul>'
+      : '<em style="color: var(--fg-muted);">none</em>';
+    const remediationPrompt = (f.remediation && f.remediation.prompt) ? f.remediation.prompt : '';
+    const remediationSummary = (f.remediation && f.remediation.summary) ? esc(f.remediation.summary) : '';
+    const effort = f.fix_effort ? `<span class="standard-chip">effort: ${esc(f.fix_effort)}</span>` : '';
+
+    return `
+      <article class="finding" data-severity="${esc(f.severity)}" data-profile="${esc(f.profile || '')}">
+        <div class="finding-header" onclick="this.parentElement.classList.toggle('open')">
+          <span class="sev-tag ${esc(f.severity)}">${esc(f.severity)}</span>
+          <span class="finding-id">${esc(f.id)}</span>
+          <span class="finding-title">${esc(f.title)}</span>
+          <span class="finding-profile">${esc(f.profile || '')}</span>
+          <span class="toggle">▶</span>
+        </div>
+        <div class="finding-body">
+          <div class="field">
+            <div class="field-label">Location</div>
+            <div class="field-value"><code>${locStr}</code></div>
+            ${snippet}
+          </div>
+          <div class="field">
+            <div class="field-label">Source</div>
+            <div class="field-value mono">${sourceLine}</div>
+          </div>
+          <div class="field">
+            <div class="field-label">Standard / mapping</div>
+            <div class="field-value standards">${standards || '<em style="color: var(--fg-muted);">none</em>'}</div>
+          </div>
+          <div class="field">
+            <div class="field-label">Why it matters</div>
+            <div class="field-value">${esc(f.why_it_matters || '')}</div>
+          </div>
+          ${remediationSummary ? `
+            <div class="field">
+              <div class="field-label">Remediation</div>
+              <div class="field-value">${remediationSummary} ${effort}</div>
+            </div>` : ''}
+          <div class="field">
+            <div class="field-label">Remediation prompt — paste into a fresh Claude session</div>
+            <div class="remediation-block">
+              <button class="copy-btn" onclick="copyPrompt(this)">Copy</button>
+              <pre class="remediation-prompt">${esc(remediationPrompt)}</pre>
+            </div>
+          </div>
+          <div class="field">
+            <div class="field-label">References</div>
+            <div class="field-value">${refsHtml}</div>
+          </div>
+        </div>
+      </article>
+    `;
+  }
+
+  // Render findings grouped by severity
+  (function() {
+    const order = ['critical', 'high', 'medium', 'low', 'info'];
+    const labels = {
+      critical: 'Critical', high: 'High', medium: 'Medium', low: 'Low', info: 'Info'
+    };
+    const byGroup = {};
+    order.forEach(s => byGroup[s] = []);
+    FINDINGS.forEach(f => {
+      if (byGroup[f.severity]) byGroup[f.severity].push(f);
+    });
+    const html = order.map(s => {
+      const list = byGroup[s];
+      if (!list.length) return '';
+      return `
+        <h2 id="sev-${s}">${labels[s]} (${list.length})</h2>
+        ${list.map(renderFinding).join('')}
+      `;
+    }).join('');
+    document.getElementById('findings-container').innerHTML =
+      html || '<div class="empty-state">No findings recorded. Either the audit found nothing, or the run did not produce results — review the markdown report for context.</div>';
+  })();
+
+  // Copy remediation prompt to clipboard
+  function copyPrompt(btn) {
+    const pre = btn.parentElement.querySelector('.remediation-prompt');
+    const text = pre.innerText;
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(text).then(() => {
+        btn.textContent = '✓ Copied';
+        btn.classList.add('copied');
+        setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 1800);
+      }).catch(() => {
+        fallbackCopy(text);
+        btn.textContent = '✓ Copied';
+        setTimeout(() => { btn.textContent = 'Copy'; }, 1800);
+      });
+    } else {
+      fallbackCopy(text);
+      btn.textContent = '✓ Copied';
+      setTimeout(() => { btn.textContent = 'Copy'; }, 1800);
+    }
+  }
+  function fallbackCopy(text) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.left = '-9999px';
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); } catch (e) {}
+    ta.remove();
+  }
+
+  // Filter buttons
+  document.querySelectorAll('.filter-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const filter = btn.dataset.filter;
+      document.querySelectorAll('.finding').forEach(f => {
+        f.style.display = (filter === 'all' || f.dataset.severity === filter) ? '' : 'none';
+      });
+      // Hide empty severity headers
+      const order = ['critical', 'high', 'medium', 'low', 'info'];
+      order.forEach(s => {
+        const h = document.getElementById('sev-' + s);
+        if (h) h.style.display = (filter === 'all' || filter === s) ? '' : 'none';
+      });
+    });
+  });
+
+  // Set cwd label from URL or leave blank
+  document.getElementById('cwd-label').textContent =
+    new URLSearchParams(location.search).get('cwd') || '';
+</script>
+</body>
+</html>

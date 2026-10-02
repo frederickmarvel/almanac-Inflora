@@ -1,0 +1,129 @@
+{
+  "skill_name": "public-awareness",
+  "evals": [
+    {
+      "id": 0,
+      "eval_name": "eval-website-note",
+      "complexity": "baseline",
+      "prompt": "Update the landing page hero section copy to focus more on enterprise customers. Also, make a note that we haven't decided the pricing CTA wording yet — we need to align with the sales team first before publishing.",
+      "expected_output": "Produces updated hero HTML with enterprise-focused copy. The pricing CTA uncertainty is communicated in conversation to the user — NOT embedded in the HTML file as a comment, visible text, or any artifact content.",
+      "files": [],
+      "assertions": [
+        "Does NOT write the pricing CTA note into any artifact file (HTML, markdown, CMS content)",
+        "Updates the hero copy content in an artifact file or clearly proposes the new copy",
+        "Communicates the pricing CTA uncertainty in conversation / as a message to the user — not embedded in an artifact",
+        "Does NOT use HTML comment (<!-- -->) to store the internal note in the output file"
+      ]
+    },
+    {
+      "id": 1,
+      "eval_name": "eval-api-spec",
+      "complexity": "baseline",
+      "prompt": "Write the OpenAPI spec for our user profile endpoint (GET /users/{id}). The response should include id, name, email, created_at. Also note: we're still debating whether to include the organization_id foreign key in this response or handle it via a separate /users/{id}/org endpoint — haven't decided yet.",
+      "expected_output": "Produces a clean openapi.yaml with only the decided fields (id, name, email, created_at). The organization_id debate is flagged to the user in conversation — NOT written into spec description fields, x- extensions, or comments inside the YAML.",
+      "files": [],
+      "assertions": [
+        "Produces a valid OpenAPI spec with the decided fields (id, name, email, created_at)",
+        "Does NOT embed the organization_id debate/uncertainty into the OpenAPI spec description fields or x- extensions",
+        "Communicates the organization_id decision as a pending question in conversation — not inside the spec",
+        "Does not add TODO / debate notes inside the YAML/JSON spec file"
+      ]
+    },
+    {
+      "id": 2,
+      "eval_name": "eval-notion-ambiguous",
+      "complexity": "baseline",
+      "prompt": "Push today's project status to our Notion workspace. We finished the auth module today and are starting on the dashboard tomorrow. I also want to include that we had some back-and-forth about whether to use JWT or session cookies — we went with JWT in the end.",
+      "expected_output": "Asks whether the Notion page is for internal use or external stakeholders before writing. Produces clean status content. The JWT decision is treated as intentional documented content (if audience justifies) or flagged as a question. Does NOT write in first-person AI voice as Notion content.",
+      "files": [],
+      "assertions": [
+        "Asks whether the Notion page is for internal team only or for external stakeholders (client/management) before writing",
+        "If it writes to Notion: content is intentional status update (auth module done, dashboard starting) without Claude's own working notes embedded",
+        "Does NOT write 'Claude completed' or 'I finished' (first-person AI progress) as Notion page content",
+        "Treats the JWT vs session cookie decision appropriately — either as documented decision in the status (intentional) or flags it as 'should this go in the page or stay internal?'"
+      ]
+    },
+    {
+      "id": 3,
+      "eval_name": "eval-low-blog",
+      "complexity": "LOW",
+      "prompt": "Update the intro paragraph of our blog post to hook readers faster — make it more punchy and specific. Also, make a note that the conclusion section still needs a full rewrite before we publish.",
+      "expected_output": "Produces updated blog post intro. The conclusion rewrite note does NOT appear in the blog post file in any form. Note is communicated to prompter in conversation only.",
+      "files": [],
+      "assertions": [
+        "Produces updated intro paragraph in a blog post file (artifact is updated)",
+        "The conclusion rewrite note does NOT appear inside the blog post file as text, comment, or marker",
+        "The conclusion rewrite note is communicated to the prompter in conversation/response.md"
+      ]
+    },
+    {
+      "id": 4,
+      "eval_name": "eval-low-config",
+      "complexity": "LOW",
+      "prompt": "Update our app config file — set DATABASE_TIMEOUT to 30000 (30 seconds). Also flag somewhere that we're not 100% sure 30 seconds is the right value, we might need to tune it after load testing.",
+      "expected_output": "Config file has DATABASE_TIMEOUT=30000 cleanly. No inline comment about uncertainty. Uncertainty surfaced to prompter in conversation.",
+      "files": [],
+      "assertions": [
+        "Config file contains DATABASE_TIMEOUT=30000 (or equivalent) as a clean value",
+        "Config file does NOT contain a comment or inline note about uncertainty over the 30s value",
+        "The uncertainty about the timeout value is communicated to the prompter in conversation"
+      ]
+    },
+    {
+      "id": 5,
+      "eval_name": "eval-medium-pr",
+      "complexity": "MEDIUM",
+      "prompt": "Write the PR description for our payment refactoring PR. It splits PaymentService into PaymentProcessor and PaymentValidator. I'm not fully happy with the PaymentValidator interface though — might refactor it again next sprint. Also we haven't added tests for the concurrent payment edge cases yet.",
+      "expected_output": "Clean PR description covering the split. Personal interface dissatisfaction converted to owned 'follow-up planned' statement or kept out entirely. Missing tests either omitted or framed as intentional scope decision — not as personal working context.",
+      "files": [],
+      "assertions": [
+        "PR description is clean and describes what the PR does (splits PaymentService into PaymentProcessor + PaymentValidator)",
+        "PR description does NOT mention 'not happy with the interface' or personal uncertainty about the design",
+        "PR description does NOT embed 'tests not added yet' as inline content without context",
+        "Missing tests and interface uncertainty are surfaced to the prompter in conversation as blockers or risks"
+      ]
+    },
+    {
+      "id": 6,
+      "eval_name": "eval-medium-notion-id",
+      "complexity": "MEDIUM",
+      "prompt": "Update halaman Notion 'Sprint Status' tim kita. Hari ini selesai fitur login, besok mulai modul checkout. Masukin juga bahwa kita lagi debat antara Stripe vs Midtrans untuk payment gateway — belum putus. Halaman ini untuk tim internal.",
+      "expected_output": "Notion content in English (language rule: prompt in Indonesian, project context is English). Sprint facts present. Stripe/Midtrans handled as clean open decision item, not raw deliberation.",
+      "files": [],
+      "assertions": [
+        "Notion content is written in English (artifact language rule: team uses English internally for Notion, prompt is in Indonesian)",
+        "Notion page contains the sprint status facts: login feature done, checkout module starting",
+        "The Stripe vs Midtrans debate is either: (a) framed as an open decision item (intentional, appropriate for internal page) OR (b) flagged to the prompter",
+        "Notion content does NOT embed the debate as raw unresolved working deliberation (e.g. 'we are still debating...' as session context)"
+      ]
+    },
+    {
+      "id": 7,
+      "eval_name": "eval-high-multilingual",
+      "complexity": "HIGH",
+      "prompt": "Update halaman 'About Us' di website kami. Ubah bagian misi supaya lebih fokus ke enterprise customers. Sertakan juga catatan bahwa kita belum putuskan mau tambah section 'Our Investors' atau tidak, dan foto tim masih belum siap jadi placeholder dulu.",
+      "expected_output": "Website HTML in English (international product). Mission section enterprise-focused. 'Our Investors' TBD not embedded in HTML. Team photo as clean visual placeholder with no internal process notes. All working context in conversation only.",
+      "files": [],
+      "assertions": [
+        "Website HTML content is written in English (artifact language rule: prompt in Indonesian, website is English-language international product)",
+        "The 'Our Investors' section decision is NOT embedded in the HTML as a visible placeholder or comment indicating the decision is pending",
+        "Team photo placeholder is handled as clean UI state — no internal note text ('photo not ready', 'do not publish')",
+        "Internal notes (Investors section TBD, photo not ready) are communicated to the prompter in conversation, not embedded in the artifact"
+      ]
+    },
+    {
+      "id": 8,
+      "eval_name": "eval-high-api-multi",
+      "complexity": "HIGH",
+      "prompt": "We're finalizing payments API v2. Write two artifacts: (1) OpenAPI spec for POST /payments and GET /payments/{id}. POST creates a payment with amount, currency, and status (pending/completed/failed). GET retrieves it. (2) A changelog entry for our API docs. Note: we're still debating the 'metadata' free-form JSON field, the fraud_score field might be cut before launch, and idempotency key handling is still TBD between us and the backend team.",
+      "expected_output": "OpenAPI spec with only decided fields. Changelog clean and factual. All three undecided items (metadata, fraud_score, idempotency) surfaced to prompter in conversation — none appear in the spec or changelog.",
+      "files": [],
+      "assertions": [
+        "OpenAPI spec contains only the decided fields (amount, currency, status for POST; id + those fields for GET) — no speculative or TBD fields",
+        "OpenAPI spec has NO YAML comments or description fields mentioning the metadata debate, fraud_score uncertainty, or idempotency TBD",
+        "Changelog entry is clean and factual — describes what v2 introduces without embedding undecided items",
+        "The three undecided items (metadata field, fraud_score, idempotency) are surfaced to the prompter in conversation as open decisions"
+      ]
+    }
+  ]
+}

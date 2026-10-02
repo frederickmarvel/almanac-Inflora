@@ -1,0 +1,18 @@
+# cso-thinking — file list for curl installer
+.claude-plugin/plugin.json
+ETHOS.md
+README.md
+skills/cso-audit/SKILL.md
+skills/cso-audit/assets/report-template.html
+skills/cso-audit/references/android.md
+skills/cso-audit/references/backend.md
+skills/cso-audit/references/databases.md
+skills/cso-audit/references/frontend.md
+skills/cso-audit/references/generic.md
+skills/cso-audit/references/infrastructure.md
+skills/cso-audit/references/ios.md
+skills/cso-audit/references/profiles.md
+skills/cso-audit/references/scoring.md
+skills/cso-audit/references/threat-intel.md
+skills/cso-audit/references/tools.md
+skills/cso-audit/scripts/fetch_intel.sh

@@ -1,0 +1,24 @@
+{
+  "name": "pm-thinking",
+  "version": "0.2.1",
+  "description": "AI-First Product Management — opinionated skill bundle untuk tech-literate Product PM. Includes /pm-discover (synthesize user research), /pm-works (write PRD with strict tech-implications), and /pm-decide (multi-mode: --prio, --review, --stakeholder, --retro).",
+  "author": {
+    "name": "Dodi (Verzth)",
+    "url": "https://github.com/verzth"
+  },
+  "homepage": "https://github.com/verzth/skills/tree/main/pm-thinking",
+  "repository": "https://github.com/verzth/skills",
+  "license": "MIT",
+  "keywords": [
+    "product-management",
+    "pm",
+    "ai-first",
+    "discovery",
+    "prd",
+    "prioritization",
+    "stakeholder-update",
+    "retro",
+    "jtbd",
+    "rice"
+  ]
+}

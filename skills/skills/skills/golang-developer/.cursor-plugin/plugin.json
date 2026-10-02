@@ -1,0 +1,48 @@
+{
+  "name": "golang-developer",
+  "version": "1.5.0",
+  "description": "Go microservices development with Clean Architecture, GORM, gRPC + grpc-gateway, Google Wire DI, NATS JetStream, Redis, MySQL. Covers scaffolding, code review, debugging, testing, restructuring, proto workflow (buf + protoc-go-inject-tag), context propagation, concurrency (sync primitives, errgroup, singleflight, goroutine leaks), observability (Zap + OTel), security (HMAC/TOTP/Vault), performance (pprof), and error handling (ParamError + samber/oops).",
+  "author": {
+    "name": "Dodi (Verzth)",
+    "url": "https://github.com/verzth"
+  },
+  "homepage": "https://github.com/verzth/skills/tree/main/skills/golang-developer",
+  "repository": "https://github.com/verzth/skills",
+  "license": "MIT",
+  "keywords": [
+    "go",
+    "golang",
+    "microservices",
+    "grpc",
+    "grpc-gateway",
+    "clean-architecture",
+    "gorm",
+    "wire-di",
+    "nats-jetstream",
+    "buf",
+    "observability",
+    "security"
+  ],
+  "skill": {
+    "entry": "SKILL.md",
+    "references": [
+      "references/entity-patterns.md",
+      "references/repository-patterns.md",
+      "references/service-patterns.md",
+      "references/grpc-patterns.md",
+      "references/rest-gateway.md",
+      "references/infrastructure.md",
+      "references/scheduler-patterns.md",
+      "references/provider-integration-patterns.md",
+      "references/testing.md",
+      "references/restructuring.md",
+      "references/context-patterns.md",
+      "references/observability.md",
+      "references/security.md",
+      "references/performance.md",
+      "references/proto-workflow.md",
+      "references/error-handling.md",
+      "references/concurrency-patterns.md"
+    ]
+  }
+}
