@@ -100,16 +100,52 @@ Required headers:
   "streamer_id":"abc-123-def-456",
   "ts":         "2026-10-02T14:30:11.000Z",
   "data": {
-    "donation_id":         "uuid",
-    "amount_idr":          50000,
-    "platform_fee_idr":    5,
-    "net_idr":             49995,
-    "donor_display_name":  "Andi",
-    "is_anonymous":        false,
-    "message":             "Semangat streamingnya bang!"
+    "donation_id":            "uuid",
+    "amount_idr":             50000,
+    "mdr_idr":                350,
+    "gross_charged_idr":      50350,
+    "platform_fee_idr":       5,
+    "net_idr":                49995,
+    "settlement_status":      "PENDING",        -- "PENDING" | "SETTLED"
+    "donor_display_name":     "Andi",
+    "is_anonymous":           false,
+    "message":                "Semangat streamingnya bang!",
+    "voice_url":              "https://cdn.inflora.app/voice/abc.mp3",
+    "voice_duration_sec":     8,
+    "youtube_url":            "https://youtu.be/xyz",
+    "youtube_start_sec":      30,
+    "youtube_end_sec":        45,
+    "display_duration_sec":   25,                -- = amount / display_rate, clamped
+    "payment_method":         "QRIS"
   }
 }
 ```
+
+**Display rules:**
+- OBS client shows the popup for `display_duration_sec` seconds, then auto-dismisses.
+- If `voice_url` set and `auto_play_voice=true`, play audio (clipped to display_duration_sec).
+- If `youtube_url` set and `auto_play_youtube=true`, embed YouTube player playing `[youtube_start_sec, youtube_end_sec]` for `display_duration_sec`.
+- If both voice and YouTube present, voice plays first (donor read aloud), then YouTube.
+- If `settlement_status === "PENDING"`, overlay shows small "⏳ Settling" pill next to amount (subtle, dismissible after settle event).
+
+### 3.3a Donation settled (delayed notification) -- sent only if streamer.settings.notify_on_donation=true
+
+```json
+{
+  "type":       "donation_settled",
+  "seq":        44,
+  "streamer_id":"abc-123-def-456",
+  "ts":         "2026-10-02T15:00:11.000Z",
+  "data": {
+    "donation_id":         "uuid",
+    "amount_idr":          50000,
+    "settled_at":          "2026-10-02T15:00:00Z",
+    "settlement_held_seconds": 1800
+  }
+}
+```
+
+OBS client renders a brief "✅ Settled" toast (no animation, just text) for 2 seconds.
 
 ### 3.4 Donation failed (optional, streamer configurable)
 

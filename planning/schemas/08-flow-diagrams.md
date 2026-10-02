@@ -705,4 +705,384 @@ Cron job (every 1 min)            saruman
 
 ---
 
-*Pin this file. When adding a new flow, append a section. Cross-reference from `01-event-catalog.md`.*
+## Flow 11 — Settlement (T+N webhook → funds become withdrawable)
+
+```
+T+N (typically minutes for QRIS, T+1 for VA, T+2-3 for CC)
+                                                       Midtrans webhook
+                                                              │
+                                                              ▼
+                    ┌──────────────────────────────────────┐
+                    │  ingest-api                           │
+                    │  POST /v1/webhooks/payment            │
+                    │  (status_code="200", transaction_status="settlement") │
+                    └──────────┬────────────────────────────┘
+                               │
+                               │  T+N+100ms
+                               ▼
+                    ┌──────────────────────┐
+                    │  saruman             │
+                    │  SettleDonation      │
+                    │  • idempotency check │
+                    │  • BEGIN TX          │
+                    │    a. UPDATE donations SET │
+                    │       settlement_status=SETTLED, settled_at=NOW() │
+                    │    b. INSERT ledger_entries x 2: │
+                    │       - STREAMER_PENDING_CREDIT (-net) │
+                    │       - STREAMER_AVAILABLE_CREDIT (+net) │
+                    │    c. version++ on ledger_accounts │
+                    │  COMMIT               │
+                    │  • publish donation.settled.v1.<streamer_id>
+                    │  • optionally: trigger email_receipts.send │
+                    └──────────┬───────────┘
+                               │
+                               ▼
+                    NATS pushes to consumers
+                               │
+                ┌──────────────┴──────────────┐
+                ▼                             ▼
+        analytics                    realtime-gateway
+                                       publishes donation_settled
+                                       WS frame to OBS (optional toast)
+                                       (only if streamer.settings.notify_on_donation=true)
+
+Side effect (parallel):
+  • trigger email_receipt if not yet sent (Flow 12)
+  • dashboard balance updates (pending_idr down, available_idr up)
+```
+
+### State machine: donation (v2 — capture then settle)
+
+```
+                                                                  cred: STREAMER_PENDING +net
+                                                                  deb: donor_cash +gross
+INTENT_CREATED ──(capture webhook)──▶ CHARGED (settlement_status=PENDING) ──(settle webhook)──▶ SETTLED
+       │                                                          │
+       ├──(webhook failure)──▶ FAILED  (settlement_status=N/A)  │
+       │                                                          │
+       └──(15 min timeout)──▶ FAILED                              │
+                                                                  │
+                                          CHARGED/SETTLED ──(admin refund)──▶ REFUNDED
+                                          CHARGED/SETTLED ──(chargeback)──▶ REFUNDED
+```
+
+### Invariants
+
+- A donation in `SETTLED` state contributes to `STREAMER_AVAILABLE` balance (withdrawable).
+- A donation in `CHARGED` state contributes to `STREAMER_PENDING` balance (NOT withdrawable).
+- Settlement moves the funds atomically between ledger accounts.
+- Email receipt may fire on either CHARGED (fast) or SETTLED (more accurate); MVP defaults to CHARGED for speed.
+
+---
+
+## Flow 12 — Email Receipt (post-donation)
+
+```
+T+0.500s                saruman                email_provider        donor inbox
+       │                    │                        │                    │
+       │  donation.charged.v1 published             │                    │
+       │                    │                        │                    │
+       │                    │  lookup donation.donor_email                │
+       │                    │  if null → skip                          │
+       │                    │                        │                    │
+       │                    │  INSERT email_receipts (PENDING)            │
+       │                    │                        │                    │
+       │                    │  email_service.Send(  │                    │
+       │                    │   to=donor_email,       │                    │
+       │                    │   subject="...",        │                    │
+       │                    │   body=receipt.html     │                    │
+       │                    │  )                       │                    │
+       │                    │ ─────────────────────▶ │                    │
+       │                    │                        │                    │
+       │                    │  (SES / SendGrid etc.) │                    │
+       │                    │                        │  SMTP/TLS          │
+       │                    │                        │ ─────────────────▶ │
+       │                    │                        │                    │
+       │                    │ ◀───────────────────── │                    │
+       │                    │  {provider_msg_id: "..."}                   │
+       │                    │                        │                    │
+       │                    │  UPDATE email_receipts SET status=SENT,     │
+       │                    │    provider_msg_id=?, sent_at=NOW            │
+       │                    │  publish donation.receipt_sent.v1.         │
+       │                    │ ──────────►              │
+```
+
+### Failure modes
+
+| Provider response | Action |
+|---|---|
+| 200 OK | Mark SENT, publish event |
+| 4xx (e.g., invalid email) | Mark FAILED, log, do not retry |
+| 5xx (transient) | Retry with exponential backoff (3 attempts); mark FAILED after |
+| Bounce (later) | Update status=BOUNCED via provider webhook |
+
+### Email template (Indonesian default)
+
+```
+Subject: Terima kasih atas donasi Rp [amount] untuk [streamer_name]
+
+Hai [donor_name],
+
+Donasi kamu sudah kami terima:
+  Jumlah donasi : Rp [amount_idr]
+  Biaya [payment_method] : Rp [mdr_idr]  (ditanggung kamu)
+  Total dibayar  : Rp [gross_charged_idr]
+  Untuk streamer : [streamer_name]
+  Pesan kamu     : "[message]"
+
+[Inflora Invoice #INV-xxxxx]
+
+⏳ Settlement: dana sedang diproses oleh payment provider,
+   tersedia untuk streamer dalam 1-3 hari kerja.
+
+Lihat transaksi kamu: https://app.inflora.app/donations/[donation_id]
+
+Terima kasih sudah mendukung kreator Indonesia! 🇮🇩
+— Tim Inflora
+```
+
+---
+
+## Flow 13 — Fund Hold (admin/finops investigation)
+
+```
+Admin dashboard                saruman                     realtime-gateway
+       │                            │                            │
+       │  POST /v1/admin/holds       │                            │
+       │  {                         │                            │
+       │    target_type: STREAMER,  │                            │
+       │    streamer_id: uuid,      │                            │
+       │    amount_idr: 1500000,    │                            │
+       │    reason: "fraud #423",   │                            │
+       │    expires_at: +30 days    │                            │
+       │  }                         │                            │
+       │ ──────────────────────────▶│
+       │                            │
+       │                            │  validate: amount <= available
+       │                            │  INSERT fund_holds (ACTIVE)
+       │                            │  INSERT audit_log (HOLD_CREATED)
+       │                            │
+       │                            │  (optional) ledger:                                     │
+       │                            │   STREAMER_AVAILABLE -X                                  │
+       │                            │   HOLD_ESCROW +X                                        │
+       │                            │
+       │                            │  publish fund_hold.created.v1.<streamer_id>             │
+       │                            │ ────────────────────────▶
+       │  201 Created                │
+       │  { hold_id, status:ACTIVE } │
+       │ ◀──────────────────────────│
+       │                            │
+       │                            │
+       │  -- streamer tries payout: --                            │
+       │                            │
+       │  POST /v1/me/payouts       │
+       │ ──────────────────────────▶│
+       │                            │  lookup active holds for streamer
+       │                            │  if amount_idr > (available - held) → reject
+       │  403 STREAMER_HOLD_ACTIVE │
+       │ ◀──────────────────────────│
+       │                            │
+       │                            │
+       │  -- admin releases hold: --                              │
+       │                            │
+       │  DELETE /v1/admin/holds/:id│
+       │  { resolution_note: "..." }│
+       │ ──────────────────────────▶│
+       │                            │  UPDATE fund_holds (RELEASED)
+       │                            │  publish fund_hold.released.v1.<streamer_id>
+       │  200 OK                    │
+       │  { hold_id, status:RELEASED }                            │
+```
+
+### Hold types
+
+| target_type | Effect |
+|---|---|
+| STREAMER | Whole-account freeze. All payouts blocked. Payouts returned with 403 STREAMER_HOLD_ACTIVE. |
+| DONATION | Specific donation excluded from withdrawable balance. Other donations OK. |
+
+### Auto-expiry
+
+Cron job (every 1 hour):
+```sql
+UPDATE fund_holds
+SET status='EXPIRED', released_at=NOW()
+WHERE status='ACTIVE' AND expires_at < NOW()
+RETURNING streamer_id;
+```
+
+For each returned: publish `fund_hold.released.v1.<streamer_id>` with `resolution_note='auto-expired'`.
+
+---
+
+## Flow 14 — Batch Payout (finops FIFO bulk transfer)
+
+```
+FinOps dashboard              tolkien           saruman          palantir-gateway       Bank API
+       │                          │                  │                    │                  │
+       │  -- Step 1: Create batch --                                                  │
+       │                          │                  │                    │                  │
+       │  POST /v1/admin/payout-batches             │                    │                  │
+       │  { auto_select: true }    │                  │                    │                  │
+       │ ─────────────────────────▶│                  │                    │                  │
+       │                          │                  │                    │                  │
+       │                          │  SELECT payouts WHERE status='REQUESTED'  │           │
+       │                          │  ORDER BY requested_at ASC (FIFO)          │           │
+       │                          │  LIMIT 1000                                 │           │
+       │                          │                  │                    │                  │
+       │                          │  UPDATE payouts SET status='BATCHED', batch_id=?
+       │                          │  INSERT payout_batches (DRAFT)              │           │
+       │                          │  publish payout.batched.v1.<streamer_id>  │           │
+       │                          │ ────────────────────▶                       │           │
+       │                          │                  │                    │                  │
+       │  201 Created              │                  │                    │                  │
+       │  { batch_id, status:DRAFT, payout_count:25 }                         │           │
+       │ ◀───────────────────────────────────────────│                  │                  │
+       │                          │                  │                    │                  │
+       │                          │                  │                    │                  │
+       │  -- Step 2: Review + execute --                                              │
+       │                          │                  │                    │                  │
+       │  GET /v1/admin/payout-batches/:id           │                    │                  │
+       │  POST /v1/admin/payout-batches/:id/execute   │                  │                  │
+       │ ─────────────────────────▶│                  │                    │                  │
+       │                          │                  │                    │                  │
+       │                          │  UPDATE payout_batches SET status='EXECUTING'        │
+       │                          │  UPDATE payouts SET status='PROCESSING'              │
+       │                          │                  │                    │                  │
+       │                          │  palantir.ExecuteBatch(batch_id, payout_ids, total) │          │
+       │                          │ ────────────────────▶                     │                  │
+       │                          │                  │                    │                  │
+       │                          │                  │  provider.BulkDisbursement(...) │                  │
+       │                          │                  │ ──────────────────────────────────▶│                  │
+       │                          │                  │                    │  API call        │
+       │                          │                  │ ◀─────────────────────────────│                  │
+       │                          │                  │  {provider_batch_id}│                  │
+       │                          │                  │                    │                  │
+       │                          │                  │  publish payout.batch.executed.v1.<streamer>    │
+       │                          │ ────────────────────▶                     │                  │
+       │                          │                  │                    │                  │
+       │                          │  UPDATE payout_batches SET provider_batch_id=?, │                  │
+       │                          │    executing_at=NOW()                       │                  │
+       │                          │                  │                    │                  │
+       │  200 OK                                                           │                  │
+       │  { batch_id, status:EXECUTING, provider_batch_id }                │                  │
+       │ ◀───────────────────────────────────────────────────│                  │
+       │                          │                  │                    │                  │
+       │                          │                  │                    │                  │
+       │  -- Step 3: Provider webhook settles (T+1 to T+3) --                                  │
+       │                          │                  │                    │                  │
+       │                          │                  │  bank settles,     │                  │
+       │                          │                  │  provider webhook  │                  │
+       │                          │                  │ ──────────────────▶│                  │
+       │                          │                  │                    │                  │
+       │                          │  For each payout in batch:               │                  │
+       │                          │    UPDATE payouts SET status='SETTLED',  │                  │
+       │                          │      provider_payout_id=?, settled_at=NOW  │                  │
+       │                          │    publish payout.settled.v1.<streamer>  │                  │
+       │                          │ ────────────────────▶                     │                  │
+       │                          │                  │                    │                  │
+       │                          │  if all settled:                          │                  │
+       │                          │    UPDATE payout_batches SET status='COMPLETED'         │
+       │                          │    publish payout.batch.completed.v1                    │
+       │                          │ ────────────────────▶                     │                  │
+```
+
+### FIFO selection
+
+```sql
+-- Default FIFO batch selection
+SELECT id, streamer_id, amount_idr, bank_account_id
+FROM payouts
+WHERE status = 'REQUESTED'
+  AND NOT EXISTS (
+    SELECT 1 FROM fund_holds fh
+    WHERE fh.streamer_id = payouts.streamer_id
+      AND fh.status = 'ACTIVE'
+  )
+ORDER BY requested_at ASC
+LIMIT 1000;
+```
+
+### Customization (admin configurable)
+
+`payout_batches` creation can be parameterized via admin settings:
+- `batch_size_max`: 25 default (provider's bulk limit)
+- `batch_threshold_idr`: trigger when accumulated REQUESTED > X IDR
+- `batch_cron`: trigger batch on schedule (e.g., every Friday 10am)
+- `fifo_only`: true/false (else select by largest amount first)
+
+These settings live in `admin_settings` table (Phase 2).
+
+---
+
+## Flow 15 — OBS Rendering with Voice + YouTube + Display Duration
+
+```
+OBS Browser Source (Vite + TS + Canvas)
+                                          │
+       donation frame received (seq=N)    │
+                                          ▼
+       ┌────────────────────────────────────────────────────┐
+       │ Renderer:                                          │
+       │  1. Read data.display_duration_sec                 │
+       │  2. If voice_url AND auto_play_voice=true:         │
+       │     a. new Audio(voice_url).play()                  │
+       │     b. duration = min(voice_duration_sec,          │
+       │                     display_duration_sec)          │
+       │  3. If youtube_url AND auto_play_youtube=true:     │
+       │     a. Embed YouTube IFrame:                       │
+       │        ?start=<youtube_start_sec>                  │
+       │        &end=<youtube_end_sec>                      │
+       │     b. Stop after display_duration_sec              │
+       │  4. Show text popup (donor name + amount + msg)    │
+       │     for display_duration_sec                       │
+       │  5. If settlement_status=PENDING,                  │
+       │     show "⏳ Settling" pill (subtle)               │
+       └────────────────────────────────────────────────────┘
+                                          │
+       After display_duration_sec:         │
+       ┌────────────────────────────────────────────────────┐
+       │ Renderer:                                          │
+       │  1. fadeOut popup                                  │
+       │  2. pause audio                                    │
+       │  3. remove YouTube iframe                          │
+       │  4. reset for next donation                        │
+       └────────────────────────────────────────────────────┘
+                                          │
+       If donation_settled frame received later:            │
+       ┌────────────────────────────────────────────────────┐
+       │ Renderer:                                          │
+       │  1. Show "✅ Settled" toast for 2 seconds          │
+       │  2. No animation; just text                        │
+       └────────────────────────────────────────────────────┘
+```
+
+### Client-side playback coordination
+
+- Voice plays first (audio context), then YouTube, then text only if time remains.
+- If `display_duration_seconds < voice_duration`, audio is clipped to display_duration.
+- If `display_duration_seconds < youtube_clip_duration`, iframe auto-stops.
+- Multiple donations queued: each gets its own display_duration in sequence (no overlap); if too many, queue depth cap.
+
+---
+
+## Updated latency budget matrix (v2)
+
+| Step | Target p99 | Notes |
+|---|---|---|
+| Donor form submit → payment_url returned | < 500ms | CAPTCHA + DB + gRPC + MDR lookup |
+| Donor confirms payment → capture webhook arrives | 5-30s | Midtrans-side |
+| Capture webhook → ledger committed | < 500ms | DB insert in TX |
+| Ledger committed → event published | < 50ms | NATS publish |
+| Event published → gateway consumes | < 100ms | NATS consumer |
+| Gateway → WS frame dispatched | < 50ms | Per-streamer hub |
+| **Total: capture webhook → OBS popup** | **< 700ms** | Above sum |
+| Capture webhook → email sent | < 5s | SES typical |
+| Provider settlement → SETTLED WS frame | varies (minutes to days) | Midtrans side |
+| FinOps batch create → batch execute | < 30s | Manual UI action |
+| Batch execute → all settled | T+1 to T+3 days | Bank processing |
+| Hold created → payout rejected | < 100ms | Synchronous check |
+
+---
+
+*Pin this file. v2 adds: Settlement (Flow 11), Email Receipt (Flow 12), Fund Hold (Flow 13), Batch Payout (Flow 14), OBS Rendering (Flow 15).*
