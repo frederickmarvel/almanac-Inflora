@@ -92,8 +92,8 @@ For complete service-to-service wiring (event topics, gRPC matrix, HTTP matrix, 
 
 | # | Phase | Goal | Estimated effort | Depends on |
 |---|---|---|---|---|
-| **0** | Bootstrap monorepo | Skeleton with Makefile, go.work, docker-compose, CI, README | 4 hours | — |
-| **1** | Shared packages (`pkg/`) | proto, events, auth, observability, db, ledger, provider | 8 hours | Phase 0 |
+| **0** | Bootstrap polyrepo | Six independent repo skeletons plus local workspace files, Docker Compose, CI, READMEs | 4 hours | — |
+| **1** | Shared library (`inflora-shared`) | proto, events, auth, observability, db, ledger, provider | 8 hours | Phase 0 |
 | **2** | Database migrations | All v2 tables + runner + seed | 4 hours | Phase 1 |
 | **3** | `tolkien` service | Auth + dashboard + admin endpoints | 12 hours | Phase 1, 2 |
 | **4** | `ingest-api` service | Public donations + webhook edge + donor page | 10 hours | Phase 1, 2, 3 |
@@ -223,11 +223,11 @@ Every HTTP server has:
 
 ---
 
-## 3. Phase 0: Bootstrap monorepo
+## 3. Phase 0: Bootstrap polyrepo
 
 ### 3.1 Goal
 
-Empty monorepo skeleton with build system, Docker, CI, README. Nothing is implemented; everything compiles.
+Six independent Git repository skeletons in the local-only `backend/` workspace. Each repository has its own build system, CI, and documentation. Nothing is implemented; everything compiles.
 
 ### 3.2 Inputs
 
@@ -237,19 +237,15 @@ None. This is the starting point.
 
 | Path | Purpose |
 |---|---|
-| `/Users/frederickmarvel/Inflora/backend/README.md` | Project overview + how to run |
-| `/Users/frederickmarvel/Inflora/backend/Makefile` | Common commands (`make dev`, `make test`, `make build`, `make lint`, `make migrate`) |
-| `/Users/frederickmarvel/Inflora/backend/go.work` | Go workspace pointing to all 4 services + pkg |
-| `/Users/frederickmarvel/Inflora/backend/docker-compose.yml` | MySQL 8, NATS 2.10, Redis 7 for local dev |
-| `/Users/frederickmarvel/Inflora/backend/.gitignore` | OS, IDE, Go, Node exclusions |
-| `/Users/frederickmarvel/Inflora/backend/.github/workflows/ci.yml` | Lint + test on every PR |
-| `/Users/frederickmarvel/Inflora/backend/.golangci.yml` | Linter config (revive, govet, errcheck, staticcheck) |
-| `/Users/frederickmarvel/Inflora/backend/CHANGELOG.md` | Empty, ready for entries |
-| `/Users/frederickmarvel/Inflora/backend/ARCHITECTURE.md` | Service boundaries + data flow (5-paragraph overview) |
-| Empty dirs: `services/{tolkien,ingest-api,palantir-gateway,saruman,ws-gateway}/` | Service placeholders (just `main.go` that prints "TODO") |
-| Empty dirs: `pkg/{proto,events,auth,observability,db,ledger,provider,config}/` | Package placeholders (`doc.go` with package description) |
-| Empty dirs: `web/{donor-landing,dashboard,obs-overlay}/` | Frontend placeholders (`package.json` minimal) |
-| `/Users/frederickmarvel/Inflora/backend/scripts/dev.sh` | `make dev` runner (starts docker-compose + sets env) |
+| `/Users/frederickmarvel/Inflora/backend/README.md` | Local workspace overview + how to run |
+| `/Users/frederickmarvel/Inflora/backend/REPO-STRUCTURE.md` | Polyrepo decision and ownership summary |
+| `/Users/frederickmarvel/Inflora/backend/README-how-to-clone.md` | Instructions for cloning the six repos |
+| `/Users/frederickmarvel/Inflora/backend/Makefile` | Workspace orchestration (`dev`, `test-all`, `build-all`, `lint-all`) |
+| `/Users/frederickmarvel/Inflora/backend/docker-compose.dev.yml` | PostgreSQL 15+, NATS 2.10 JetStream, Redis 7 for local dev |
+| `/Users/frederickmarvel/Inflora/backend/.gitignore` | Workspace OS, IDE, build, and environment exclusions |
+| `inflora-shared/` | Independent Go library repo with canonical proto files and package placeholders |
+| `inflora-{tolkien,ingest,palantir,saruman,ws-gateway}/` | Independent service repos; each executable prints a Phase TODO |
+| Each repo's `.github/workflows/ci.yml` | Independent lint + test + build workflow |
 
 ### 3.4 Code structure
 
@@ -275,19 +271,19 @@ package events
 
 ### 3.5 Test cases
 
-- [ ] `make build` succeeds for all 5 services (each prints "TODO")
-- [ ] `make test` passes (no tests yet, but exit code 0)
-- [ ] `make dev` brings up mysql + nats + redis containers; `docker ps` confirms
-- [ ] `make lint` passes (no errors on placeholder code)
-- [ ] `git init` + initial commit + push to `frederickmarvel/inflora-backend` (or chosen name)
+- [ ] `make build-all` succeeds for the shared library and all 5 services
+- [ ] `make test-all` passes (no tests yet, but exit code 0)
+- [ ] `make dev` brings up PostgreSQL + NATS JetStream + Redis when Docker is available
+- [ ] `make lint-all` passes (no errors on placeholder code)
+- [ ] Each of the 6 child directories is an independent Git repository on branch `main`
 
 ### 3.6 Acceptance criteria
 
-- [ ] Repo is public on GitHub, default branch `main`
-- [ ] CI runs on first commit (even if just `echo OK`)
+- [ ] All 6 repos are public on GitHub, default branch `main`
+- [ ] Each repo's CI runs on its first pushed commit
 - [ ] README explains: prerequisites, how to start, how to run tests, where to find schemas
-- [ ] ARCHITECTURE.md explains: 5 services, their responsibilities, how they connect
-- [ ] Local dev: `make dev` → services can connect to MySQL + NATS
+- [ ] Each ARCHITECTURE.md explains the repo responsibility and canonical connections
+- [ ] Local dev: `make dev` → services can connect to PostgreSQL + NATS JetStream
 
 ### 3.7 DO NOT
 
@@ -306,7 +302,7 @@ Reusable library code that every service imports. All schemas encoded as Go type
 
 ### 4.2 Inputs
 
-Phase 0 (monorepo skeleton).
+Phase 0 (polyrepo skeleton).
 
 ### 4.3 Deliverables
 

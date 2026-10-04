@@ -83,7 +83,7 @@ This is the **single source of truth for service-to-service wiring** in Inflora'
                                        │ All services share single DB
                                        ▼
                           ┌────────────────────────────────┐
-                          │ MySQL 8 schema `inflora`      │
+│                          │ PostgreSQL 15+ DB `inflora`   │
                           │ owner: saruman (migrations)  │
                           └────────────────────────────────┘
 ```
@@ -157,7 +157,7 @@ Internal HTTP is for service-to-service calls that are NOT in the gRPC matrix an
 
 ## 6. Database Ownership (per-table writer matrix)
 
-**All services share one MySQL schema `inflora`.** But **only one service WRITES each table** to avoid race conditions.
+**All services share one PostgreSQL 15+ database `inflora`.** But **only one service WRITES each table** to avoid race conditions.
 
 | Table | OWNER (INSERTs) | WRITERS (UPDATEs) | READERS | Migration runner |
 |---|---|---|---|---|

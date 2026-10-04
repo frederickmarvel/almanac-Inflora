@@ -72,7 +72,7 @@ inflora-<name>/
 ├── ARCHITECTURE.md                 # service-internal design
 ├── CHANGELOG.md                    # version history
 ├── Makefile                        # make build, make test, make run, make lint
-├── Dockerfile                      # multi-stage build (gorilla+builder and distroless runtime)
+├── Dockerfile                      # service repos only: Go builder + distroless runtime
 ├── go.mod                          # module github.com/frederickmarvel/inflora-<name>
 ├── go.sum
 ├── .golangci.yml                   # linter config (revive, govet, errcheck, staticcheck)
@@ -120,7 +120,7 @@ Workspace-level files at `/Users/frederickmarvel/Inflora/backend/`:
 backend/
 ├── README.md                       # workspace overview
 ├── REPO-STRUCTURE.md                # decision doc: why polyrepo (link to WIRE_GUIDE.md §1)
-├── docker-compose.dev.yml           # mysql 8, nats 2.10, redis 7 for local dev
+├── docker-compose.dev.yml           # PostgreSQL 15+, NATS 2.10 JetStream, Redis 7
 ├── Makefile                        # workspace-level: make dev, make test-all, make build-all
 ├── .gitignore                       # workspace-level
 └── README-how-to-clone.md          # tells devs to clone each repo separately
@@ -310,21 +310,23 @@ Create at `/Users/frederickmarvel/Inflora/backend/`:
 ```yaml
 version: '3.9'
 services:
-  mysql:
-    image: mysql:8.0
+  postgres:
+    image: postgres:15-alpine
     environment:
-      MYSQL_ROOT_PASSWORD: dev
-      MYSQL_DATABASE: inflora
-    ports: ["3306:3306"]
-    volumes: ["mysql-data:/var/lib/mysql"]
+      POSTGRES_USER: inflora
+      POSTGRES_PASSWORD: dev
+      POSTGRES_DB: inflora
+    ports: ["5432:5432"]
+    volumes: ["postgres-data:/var/lib/postgresql/data"]
   nats:
-    image: nats:2.10
+    image: nats:2.10-alpine
+    command: ["-js"]
     ports: ["4222:4222"]
   redis:
     image: redis:7-alpine
     ports: ["6379:6379"]
 volumes:
-  mysql-data:
+  postgres-data:
 ```
 
 4. **Makefile** — workspace-level targets:

@@ -12,7 +12,7 @@
 syntax = "proto3";
 package inflora.palantir.v1;
 
-option go_package = "github.com/inflora/palantir-gateway/proto/v1;topupv1";
+option go_package = "github.com/frederickmarvel/inflora-shared/gen/go/palantir/v1;palantirv1";
 
 // ---------- CreateTopUp ----------
 
@@ -70,7 +70,7 @@ service TopUpService {
 syntax = "proto3";
 package inflora.palantir.v1;
 
-option go_package = "github.com/inflora/palantir-gateway/proto/v1;withdrawalv1";
+option go_package = "github.com/frederickmarvel/inflora-shared/gen/go/palantir/v1;palantirv1";
 
 message CreateWithdrawalRequest {
   string saruman_payout_id    = 1;     // uuid, links to payouts.id
@@ -113,7 +113,7 @@ service WithdrawalService {
 syntax = "proto3";
 package inflora.palantir.v1;
 
-option go_package = "github.com/inflora/palantir-gateway/proto/v1;refundv1";
+option go_package = "github.com/frederickmarvel/inflora-shared/gen/go/palantir/v1;palantirv1";
 
 message CreateRefundRequest {
   string saruman_refund_id    = 1;     // uuid
@@ -142,7 +142,7 @@ service RefundService {
 syntax = "proto3";
 package inflora.palantir.v1;
 
-option go_package = "github.com/inflora/palantir-gateway/proto/v1;healthv1";
+option go_package = "github.com/frederickmarvel/inflora-shared/gen/go/palantir/v1;palantirv1";
 
 import "google/protobuf/empty.proto";
 
