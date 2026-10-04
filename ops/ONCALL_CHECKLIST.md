@@ -1,5 +1,12 @@
 # On-Call Checklist — Inflora
 
+> **Guidance**
+> - **Use this when:** starting a shift, responding to an incident, or handing off to the next on-call.
+> - **Audience:** whoever is on-call this week.
+> - **Related:** `RUNBOOK.md` (per-service operations), `../planning/WIRE_GUIDE.md §1` (service registry + ports), `../planning/schemas/08-flow-diagrams.md` (visual flows for debugging).
+
+---
+
 > **Audience.** Whoever is on-call this week. Keep it on your desk / pinned in your chat.
 > **Cadence.** Rotate weekly. Hand off cleanly at the end of the shift.
 
