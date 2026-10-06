@@ -15,7 +15,7 @@
                                 │
                                 ▼
                     ┌──────────────────────┐
-                    │  ingest-api          │
+                    │  ingest          │
                     │  POST /v1/donations  │
                     │  • validate          │
                     │  • CAPTCHA verify    │
@@ -25,7 +25,7 @@
                                │  T+50ms
                                ▼
                     ┌──────────────────────┐
-                    │  ingest-api          │
+                    │  ingest          │
                     │  • INSERT donations  │
                     │    (INTENT_CREATED,  │
                     │     expires_at=+15m) │
@@ -37,7 +37,7 @@
                                │  T+200ms
                                ▼
                     ┌──────────────────────┐
-                    │  palantir-gateway    │
+                    │  palantir    │
                     │  • provider.CreateTopUp
                     │  • Midtrans Snap → payment_url
                     │  • INSERT gateway_topups (PENDING)
@@ -46,7 +46,7 @@
                                │  T+400ms
                                ▼
                     ┌──────────────────────┐
-                    │  ingest-api          │
+                    │  ingest          │
                     │  HTTP 201:           │
                     │   { payment_url,     │
                     │     intent_id, ... } │
@@ -68,7 +68,7 @@
                                 │
                                 ▼
                     ┌──────────────────────┐
-                    │  ingest-api          │
+                    │  ingest          │
                     │  1. Verify signature │
                     │  2. Detect provider  │
                     │  3. INSERT idempotency
@@ -80,7 +80,7 @@
                                │  T+15.100s
                                ▼
                     ┌──────────────────────┐
-                    │  palantir-gateway    │
+                    │  palantir    │
                     │  • INSERT webhook_events (audit)
                     │  • UPDATE gateway_topups (SETTLED)
                     │  • publish pg.gateway.topup.completed.v1
@@ -123,14 +123,14 @@
                   │  T+15.500s (NATS push)   │
                   ▼                          ▼
        ┌─────────────────────┐    ┌────────────────────────┐
-       │  saruman analytics  │    │  realtime-gateway      │
+       │  saruman analytics  │    │  ws-gateway      │
        │  (Phase 2 consumer) │    │  NATS consumer         │
        └─────────────────────┘    └───────────┬────────────┘
                                               │
                                               │  T+15.550s
                                               ▼
                                 ┌─────────────────────────────┐
-                                │  realtime-gateway           │
+                                │  ws-gateway           │
                                 │  • Look up streamer hub     │
                                 │    (map[streamerID]*Hub)     │
                                 │  • Atomic increment seq     │
@@ -176,7 +176,7 @@ INTENT_CREATED ──(webhook settlement)──▶ CHARGED
 ## Flow 2 — OBS WebSocket Connect & Catch-up
 
 ```
-OBS Browser Source                         ithildin + saruman
+OBS Browser Source                         ws-gateway + saruman
          │                                          │
          │  GET overlay.inflora.app/ws?token=ok_xxx
          │  Sec-WebSocket-Protocol: inflora-overlay.v1
@@ -215,10 +215,11 @@ OBS Browser Source                         ithildin + saruman
          │  {type:catch_up, last_seq: 42}          │
          │ ────────────────────────────────────────▶│
          │                                          │
-         │                          read NATS log:  │
-         │                          events 43..87   │
-         │                          (or replay_window │
-         │                           if NATS trimmed)│
+         │                          read ws_projection_ │
+         │                          _frames 43..87      │
+         │                          (or system.resync_  │
+         │                           _required if gap   │
+         │                           exceeds retention) │
          │                                          │
          │  {type:donation, seq:43, data:...}      │
          │ ◀────────────────────────────────────────│
@@ -247,7 +248,7 @@ Server: no OBS issue
 ## Flow 3 — Idempotency at Webhook Edge (the critical path)
 
 ```
-Midtrans webhook              ingest-api                     DB
+Midtrans webhook              ingest                     DB
                  │
         ┌────────┴────────┐
         │ T+0: arrives    │
@@ -307,7 +308,7 @@ With idempotency:
 ## Flow 4 — Streamer Registration → Ledger Provisioning
 
 ```
-tolkien dashboard        saruman              palantir-gateway
+tolkien dashboard        saruman              palantir
        │                    │                        │
        │  POST /v1/auth/signup
        │ ──────────────────▶│
@@ -350,7 +351,7 @@ tolkien dashboard        saruman              palantir-gateway
 ## Flow 5 — Payout Request (Streamer Initiated)
 
 ```
-Streamer dashboard       saruman              palantir-gateway      Bank
+Streamer dashboard       saruman              palantir      Bank
        │                    │                        │                │
        │  POST /v1/me/payouts (amount_idr: 145000)
        │ ──────────────────▶│
@@ -413,7 +414,7 @@ REQUESTED ──(palantir CreateWithdrawal)──▶ PROCESSING ──(webhook)�
 ## Flow 6 — Refund (Admin Initiated)
 
 ```
-Admin dashboard        saruman              palantir-gateway        Provider
+Admin dashboard        saruman              palantir        Provider
        │                    │                        │                   │
        │  POST /v1/admin/donations/:id/refund
        │  { reason: ADMIN_REFUND }
@@ -467,7 +468,7 @@ Admin dashboard        saruman              palantir-gateway        Provider
 ## Flow 7 — Token Rotation
 
 ```
-Streamer dashboard       tolkien               saruman         realtime-gateway
+Streamer dashboard       tolkien               saruman         ws-gateway
        │                    │                      │                    │
        │  POST /v1/me/overlay-token/rotate
        │ ──────────────────▶│
@@ -561,7 +562,7 @@ For each `(streamer_id, account_type, currency)`:
 ### Failure 1a: Database UNIQUE violation on idempotency (race: two webhooks arrive simultaneously)
 
 ```
-Webhook A                ingest-api                  DB
+Webhook A                ingest                  DB
    │                        │                        │
    │  INSERT idempotency   │                        │
    │ ──────────────────────▶│                        │
@@ -713,25 +714,41 @@ T+N (typically minutes for QRIS, T+1 for VA, T+2-3 for CC)
                                                               │
                                                               ▼
                     ┌──────────────────────────────────────┐
-                    │  ingest-api                           │
+                    │  ingest                           │
                     │  POST /v1/webhooks/payment            │
-                    │  (status_code="200", transaction_status="settlement") │
+                    │  (HTTP edge only — NO DB writes)      │
+                    │  → gRPC SettleTopUp to palantir       │
                     └──────────┬────────────────────────────┘
                                │
-                               │  T+N+100ms
+                               │  gRPC SettleTopUp (raw body)
                                ▼
                     ┌──────────────────────┐
-                    │  saruman             │
-                    │  SettleDonation      │
+                    │  palantir            │
+                    │  SettleTopUp         │
+                    │  • verify signature  │
                     │  • idempotency check │
+                    │  • BEGIN TX          │
+                    │    a. UPSERT gateway_topups, status=SETTLED │
+                    │    b. INSERT webhook_events |
+                    │    c. INSERT outbox_events pg.gateway.topup.completed.v1
+                    │  COMMIT              │
+                    │  → NATS JetStream    │
+                    └──────────┬───────────┘
+                               │
+                               ▼  (durable consumer_inbox claim)
+                    ┌──────────────────────┐
+                    │  saruman             │
+                    │  (Phase 7 handler)   │
+                    │  • claim inbox       │
                     │  • BEGIN TX          │
                     │    a. UPDATE donations SET │
                     │       settlement_status=SETTLED, settled_at=NOW() │
                     │    b. INSERT ledger_entries x 2: │
                     │       - STREAMER_PENDING_CREDIT (-net) │
                     │       - STREAMER_AVAILABLE_CREDIT (+net) │
-                    │    c. version++ on ledger_accounts │
-                    │  COMMIT               │
+                    │    c. INSERT outbox_events donation.settled.v1 │
+                    │  COMMIT              │
+                    │  → NATS JetStream    │
                     │  • publish donation.settled.v1.<streamer_id>
                     │  • optionally: trigger email_receipts.send │
                     └──────────┬───────────┘
@@ -741,7 +758,7 @@ T+N (typically minutes for QRIS, T+1 for VA, T+2-3 for CC)
                                │
                 ┌──────────────┴──────────────┐
                 ▼                             ▼
-        analytics                    realtime-gateway
+        analytics                    ws-gateway
                                        publishes donation_settled
                                        WS frame to OBS (optional toast)
                                        (only if streamer.settings.notify_on_donation=true)
@@ -846,7 +863,7 @@ Terima kasih sudah mendukung kreator Indonesia! 🇮🇩
 ## Flow 13 — Fund Hold (admin/finops investigation)
 
 ```
-Admin dashboard                saruman                     realtime-gateway
+Admin dashboard                saruman                     ws-gateway
        │                            │                            │
        │  POST /v1/admin/holds       │                            │
        │  {                         │                            │
@@ -918,7 +935,7 @@ For each returned: publish `fund_hold.released.v1.<streamer_id>` with `resolutio
 ## Flow 14 — Batch Payout (finops FIFO bulk transfer)
 
 ```
-FinOps dashboard              tolkien           saruman          palantir-gateway       Bank API
+FinOps dashboard              tolkien           saruman          palantir       Bank API
        │                          │                  │                    │                  │
        │  -- Step 1: Create batch --                                                  │
        │                          │                  │                    │                  │

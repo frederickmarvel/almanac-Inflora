@@ -43,9 +43,9 @@ This is the **single source of truth for service-to-service wiring** in Inflora'
 │                         inflora microservices                                       │
 │                                                                                    │
 │   ┌─────────────────┐                                                              │
-│   │ ingest          │   POST /v1/webhooks/payment  ◀──── Midtrans / Xendit webhooks
-│   │ :8081 HTTP      │       │                                                       │
-│   └────────┬────────┘       │ gRPC SettleDonation                                    │
+│   │ ingest          │   POST /v1/webhooks/payment  ◀──── Midtrans webhooks        │
+│   │ :8081 HTTP      │       │ (HTTP edge only — NO DB writes; D-002/D-003)         │
+│   └────────┬────────┘       │ gRPC SettleTopUp → palantir                           │
 │            │                ▼                                                       │
 │            │         ┌──────────────────┐                                            │
 │            └────────▶│ saruman           │      ┌─────────────────┐                │
@@ -56,7 +56,7 @@ This is the **single source of truth for service-to-service wiring** in Inflora'
 │   ┌─────────────────┐   │                       └─────────────────┘             ▼
 │   │ palantir        │   │                                                 ┌──────────────┐
 │   │ gRPC :7001      │   │ NATS publish                                    │ Midtrans SNAP │
-│   └────────┬────────┘   │ donation.charged.v1.<streamer_id>              │ Xendit Invoice│
+│   └────────┬────────┘   │ donation.charged.v1.<streamer_id>              │ Pivot (stub)  │
 │            │ HTTPS      ▼                                                 └──────────────┘
 │            ▼      ┌──────────────────────────────────────┐
 │   ┌─────────────────┐  │ NATS JetStream :4222            │                  ▲
@@ -97,9 +97,16 @@ Every event published to NATS has exactly **one producer**. Consumers may be mul
 | Topic | Producer | Subscribers | Purpose |
 |---|---|---|---|
 | `donation.intent.created.v1` | **ingest** | saruman | Donor submits form; saruman provisions ledger accounts |
-| `donation.charged.v1` | **saruman** | ws-gateway, analytics | Provider captured; OBS alert fired |
-| `donation.settled.v1` | **saruman** | ws-gateway (optional toast), analytics | Provider settled; STREAMER_AVAILABLE increases |
-| `donation.failed.v1` | **saruman** | analytics | Capture failed |
+| `donation.charged.v1` | **saruman** | ws-gateway, analytics | Provider captured (CHARGED); STREAMER_PENDING increases; OBS alert fired. Emitted in same TX as the capture-side ledger entries. `settlement_status=PENDING`. |
+| `donation.settled.v1` | **saruman** | ws-gateway (optional toast), analytics | Provider settled (Settled); PENDING→AVAILABLE move; emitted in same TX as the new ledger entries. `settlement_status=SETTLED`. |
+| `donation.failed.v1` | **saruman** | ws-gateway (skip), analytics | Capture failed; donation goes FAILED; outbox emits in same TX as the donation row update. |
+| `pg.gateway.topup.completed.v1` | **palantir** | saruman | Palantir wrote `gateway_topups` and the corresponding `webhook_events` row, then committed. Frozen payload in `schemas/09-internal-provider-events.md`. |
+| `pg.gateway.topup.failed.v1` | **palantir** | saruman | Palantir transitioned the gateway top-up to a failed/expired/cancelled state and recorded `webhook_events`. |
+| `pg.gateway.topup.expired.v1` | **palantir** | saruman | Gateway top-up expired without capture (e.g. donor abandoned QRIS). |
+| `pg.gateway.withdrawal.completed.v1` | **palantir** | saruman | Withdrawal settled at bank. |
+| `pg.gateway.withdrawal.failed.v1` | **palantir** | saruman | Bank rejected / returned. |
+| `pg.gateway.refund.completed.v1` | **palantir** | saruman | Refund settled. |
+| `pg.gateway.refund.failed.v1` | **palantir** | saruman | Refund rejected / not settled. |
 | `donation.refunded.v1` | **saruman** | analytics | Refund completed |
 | `donation.receipt_sent.v1` | **saruman** | analytics | Donor receipt email sent |
 | `payout.requested.v1` | **tolkien** | palantir, saruman | Streamer requests payout |
@@ -127,6 +134,7 @@ Every event published to NATS has exactly **one producer**. Consumers may be mul
 | Caller | Callee | RPC | Schema reference |
 |---|---|---|---|
 | **ingest** | palantir | `CreateTopUp` | `schemas/04-grpc-proto.md §topup.proto` |
+| **ingest** | palantir | `SettleTopUp` | `schemas/04-grpc-proto.md §topup.proto` |
 | **saruman** | palantir | `CreateWithdrawal` | `schemas/04-grpc-proto.md §withdrawal.proto` |
 | **saruman** | palantir | `SettleWithdrawal` | `schemas/04-grpc-proto.md §withdrawal.proto` |
 | **saruman** | palantir | `CreateRefund` | `schemas/04-grpc-proto.md §refund.proto` |
@@ -166,12 +174,12 @@ Internal HTTP is for service-to-service calls that are NOT in the gRPC matrix an
 | `streamer_settings` | tolkien | tolkien | saruman (read for new donations), ws-gateway (cache) | saruman |
 | `streamer_bank_accounts` | tolkien | tolkien | saruman (read for payout creation) | saruman |
 | `idempotency` | ingest | ingest | ingest (read for retry), saruman (read for debugging) | saruman |
-| `webhook_events` | ingest, palantir | ingest, palantir | (audit only) | palantir |
+| `webhook_events` | **palantir only** | **palantir only** | (audit only) | palantir |
 | `donations` | ingest (INSERT INTENT_CREATED) | saruman (state transitions only) | tolkien (read for /v1/me/donations), palantir (read for settle), ws-gateway (no read) | saruman |
 | `ledger_entries` | **saruman ONLY** | (append-only — NEVER UPDATE/DELETE) | saruman (recon), tolkien (audit) | saruman |
 | `ledger_accounts` | saruman (auto-create on streamer.registered) | saruman (balance update + version increment) | saruman, tolkien (read for balance view) | service-to-service |
-| `refunds` | saruman | saruman | tolkien (audit) | saruman |
-| `payouts` | tolkien (INSERT REQUESTED) | saruman (status transitions), palantir (settled) | tolkien (read for /v1/me/payouts) | saruman |
+| `refunds` | saruman (HTTP facade: tolkien calls Saruman command — D-005) | **saruman only** (status transitions, ledger compensation) | tolkien (audit) | saruman |
+| `payouts` | tolkien (INSERT REQUESTED, via authenticated Saruman command — see D-004) | **saruman only** (status transitions, balance reservation, ledger) | tolkien (read for /v1/me/payouts), saruman | saruman |
 | `payout_batches` | tolkien | tolkien, saruman, palantir | saruman | saruman |
 | `fund_holds` | tolkien | tolkien | saruman (read for payout validation) | saruman |
 | `email_receipts` | saruman | saruman | saruman | saruman |
@@ -271,19 +279,19 @@ inflora-<service>/
 ## 8. Service Responsibilities (one paragraph each)
 
 ### 8.1 tolkien — `inflora-tolkien`
-Streamer-facing and admin HTTP API. Owns: streamers, sessions, streamer_settings, streamer_bank_accounts, payout_batches, fund_holds. Exposes signup/login/logout, /v1/me/*, /v1/admin/*, /v1/internal/validate-overlay-token, /v1/internal/send-receipt. Publishes: streamer.registered.v1, streamer.settings.updated.v1, overlay.token.rotated.v1, fund_hold.created.v1, fund_hold.released.v1, payout.batched.v1, payout.batch.executed.v1. Reads donations table for /v1/me/donations; reads ledger via view v_streamer_balances. Single source of truth for streamer identity and admin/finops actions.
+Streamer-facing and admin HTTP API. Owns: streamers, sessions, streamer_settings, streamer_bank_accounts, payout_batches, fund_holds. Exposes signup/login/logout, /v1/me/*, /v1/admin/*, /v1/internal/validate-overlay-token, /v1/internal/send-receipt. Publishes: streamer.registered.v1, streamer.settings.updated.v1, overlay.token.rotated.v1, fund_hold.created.v1, fund_hold.released.v1, payout.batched.v1, payout.batch.executed.v1. Reads donations table for /v1/me/donations; reads ledger via view v_streamer_balances. Single source of truth for streamer identity and admin/finops actions. **Payout and refund HTTP are facades only (D-006); all financial state mutations happen in Saruman.**
 
 ### 8.2 ingest — `inflora-ingest`
-Public-facing HTTP API + webhook ingest. Owns: idempotency, webhook_events (with palantir), donations (INSERT INTENT_CREATED only). Exposes /d/:streamer_id (donor landing page), POST /v1/donations, POST /v1/webhooks/payment. ValidatesHMAC signatures on webhooks, computes MDR, dedupes via idempotency, calls palantir CreateTopUp gRPC for payment URL, publishes donation.intent.created.v1. NO ledger writes (saruman does that). NO streamer management (tolkien does that).
+Public-facing HTTP API + webhook edge. Owns: idempotency, donations (INSERT INTENT_CREATED only). Exposes /d/:streamer_id (donor landing page), POST /v1/donations, POST /v1/webhooks/payment. **Does NOT verify provider signatures or write `webhook_events`** (D-002, D-003). On webhook receipt, forwards the raw body to Palantir's `SettleTopUp` gRPC and returns the provider-compatible response. Computes MDR locally (configurable per payment_method), dedupes its own HTTP idempotency, calls Palantir `CreateTopUp` gRPC for payment URL, publishes `donation.intent.created.v1` in the same DB transaction as the donation row insert. NO ledger writes. NO streamer management. NO `webhook_events` writes. NO financial state mutations beyond INTENT_CREATED.
 
 ### 8.3 palantir — `frederickmarvel/inflora-palantir`
-Payment provider broker (gRPC). Owns: gateway_topups, gateway_withdrawals, gateway_refunds, webhook_events (co-owned with ingest). Exposes gRPC TopUpService, WithdrawalService, RefundService. Implements provider interface: midtrans/snap, xendit/invoice (Phase 2), pivot/stub (dev). Publishes: pg.gateway.* events (palantir's internal namespace; saruman consumes). NO ledger writes. NO streamer management. NO donation state transitions.
+Payment provider broker (gRPC). Owns: gateway_topups, gateway_withdrawals, gateway_refunds, **webhook_events (sole writer, D-002)**. Exposes gRPC TopUpService, WithdrawalService, RefundService, HealthService. Implements provider interface: **midtrans/snap (production MVP), pivot/stub (local dev only)**. Xendit is deferred (D-016) and MUST NOT be added at MVP. Publishes: `pg.gateway.topup.completed.v1`, `pg.gateway.topup.failed.v1`, `pg.gateway.topup.expired.v1`, `pg.gateway.withdrawal.completed.v1`, `pg.gateway.withdrawal.failed.v1`, `pg.gateway.refund.completed.v1`, `pg.gateway.refund.failed.v1` via the transactional outbox (Phase 1 schema, Phase 2 dispatcher). NO ledger writes. NO streamer management. NO donation state transitions.
 
 ### 8.4 saruman — `inflora-saruman`
-Donation engine + ledger. Owns: donations (state transitions only), ledger_entries (APPEND-ONLY), ledger_accounts, refunds, payouts (state transitions), email_receipts, mdr_rates, fraud_events, audit_log (co-owned with all), reconciliation_drift. Runs migration runner. Exposes gRPC SettleDonation, gRPC SettleWithdrawal, HTTP /v1/admin/donations/:id/refund, /v1/admin/streamers/:id/drain, /v1/admin/streamers/:id/rotate-token. Subscribes to all pg.gateway.* events. Publishes: donation.charged.v1, donation.settled.v1, donation.failed.v1, donation.refunded.v1, donation.receipt_sent.v1, fraud.flagged.v1, payout.settled.v1, payout.failed.v1, payout.batch.completed.v1, payout.batch.failed.v1. Owns reconciliation cron + hold expiry + intent expiry.
+Donation engine + ledger. Owns: donations (state transitions), ledger_entries (APPEND-ONLY, NEVER UPDATE/DELETE), ledger_accounts, refunds (state transitions), payouts (state transitions, atomic balance reservation — D-004), email_receipts, mdr_rates, fraud_events, audit_log (co-owned with all), reconciliation_drift. Runs the single migration runner. **Does NOT expose gRPC `SettleDonation`** (D-001); settlement happens by Palantir `SettleTopUp` → `pg.gateway.*` event → Saruman durable consumer_inbox. Exposes HTTP `/v1/admin/donations/:id/refund`, `/v1/admin/streamers/:id/drain`, `/v1/admin/streamers/:id/rotate-token` (auth facade only) and the Saruman command surface for payout/refund that tolkien calls. Subscribes to all `pg.gateway.*` events via durable consumer_inbox (Phase 2). Publishes: donation.charged.v1, donation.settled.v1, donation.failed.v1, donation.refunded.v1, donation.receipt_sent.v1, fraud.flagged.v1, payout.settled.v1, payout.failed.v1, payout.batch.completed.v1, payout.batch.failed.v1. Owns reconciliation cron + hold expiry + intent expiry.
 
 ### 8.5 ws-gateway — `frederickmarvel/inflora-ws-gateway` (friend's main work)
-OBS overlay WebSocket gateway. Owns: NOTHING (pure read of streamers). Exposes HTTP /ws (WebSocket upgrade) + /healthz + /metrics. Validates overlay token via tolkien HTTP (cached 60s). Subscribes to donation.charged.v1 (always) + donation.settled.v1 (if streamer.settings.notify_on_donation=true). Per-streamer hub: `map[streamerID]*Hub` with `sync.RWMutex` per hub. Atomic monotonic `seq` counter per streamer. Heartbeat every 10s;silent >30s → close 4408. Reconnect: exponential backoff with jitter (200ms → 30s). Catch-up: client sends `catch_up` frame, server replays NATS log from last_seq+1.
+OBS overlay WebSocket gateway. Owns: **ws_projection_sequences, ws_projection_frames, ws_projection_inbox** (Phase 1 schema; D-015). Exposes HTTP `/ws` (WebSocket upgrade) + `/healthz` + `/metrics`. Validates overlay token via tolkien HTTP (cached 60s; `X-Internal-Api-Key`, NOT `Authorization: Bearer` — D-010). Subscribes to `donation.charged.v1` (always) and `donation.settled.v1` (when `streamer_settings.notify_on_donation=true`). Per-streamer hub: `map[streamerID]*Hub` with `sync.RWMutex` per hub. **Sequence allocation and replay are durable in PostgreSQL** (D-015), so two replicas see the same `(streamer_id, seq)` history and a replica restart does not reset `seq`. Reconnect: exponential backoff with jitter (200ms → 30s). Replay: client sends `?since=<seq>`, replays from `last_seq+1`, sends `system.resync_required` when the requested `seq` is too old or the gap exceeds the retention window. Heartbeat every 10s; silent >30s → close 4408.
 
 ### 8.6 shared — `inflora-shared` (Go library, not deployed)
 Shared types and helpers.Contains: proto definitions (generated Go code), event Go structs (matching almanac 01-event-catalog), auth helpers (token gen/validate, password hash), observability (logger, tracer, metrics), db pool, ledger double-entry helpers, provider interface, config loader, middleware. Imported by all 5 services as`github.com/frederickmarvel/inflora-shared`. Versioned: v0.1.0, v0.2.0, etc.

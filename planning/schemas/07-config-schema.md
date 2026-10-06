@@ -10,7 +10,7 @@
 | Variable | Type | Default | Notes |
 |---|---|---|---|
 | `ENV` | enum | `dev` | `dev`, `staging`, `prod` |
-| `SERVICE_NAME` | string | required | `ingest-api`, `saruman`, `palantir-gateway`, `tolkien`, `ithildin` |
+| `SERVICE_NAME` | string | required | `ingest`, `saruman`, `palantir`, `tolkien`, `ws-gateway` |
 | `LOG_LEVEL` | enum | `info` | `debug`, `info`, `warn`, `error` |
 | `LOG_FORMAT` | enum | `json` | `json` (prod), `text` (dev) |
 | `HTTP_ADDR` | string | per-service | `:8080`, `:8081`, etc. |
@@ -18,7 +18,7 @@
 
 ---
 
-## 2. Database (saruman, tolkien, ithildin)
+## 2. Database (saruman, tolkien, ws-gateway)
 
 | Variable | Type | Notes |
 |---|---|---|
@@ -31,7 +31,7 @@
 
 ---
 
-## 3. NATS (saruman, palantir-gateway, ithildin for replay)
+## 3. NATS (saruman, palantir, ws-gateway for replay)
 
 | Variable | Type | Notes |
 |---|---|---|
@@ -59,7 +59,7 @@
 
 ---
 
-## 5. Payment provider (saruman, palantir-gateway)
+## 5. Payment provider (saruman, palantir)
 
 | Variable | Type | Notes |
 |---|---|---|
@@ -92,7 +92,7 @@
 
 | Variable | Type | Notes |
 |---|---|---|
-| `SM_GATEWAY_ADDR` | string | `localhost:7001` (dev) / `palantir-gateway:7001` (k8s) |
+| `SM_GATEWAY_ADDR` | string | `localhost:7001` (dev) / `palantir:7001` (k8s) |
 | `SM_GATEWAY_ENGINE_API_KEY` | string | Shared secret |
 | `SM_GRPC_TIMEOUT_SEC` | int | Default 5 |
 

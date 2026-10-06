@@ -13,11 +13,16 @@
 | **01** | `01-event-catalog.md` | Every event topic with full payload schema, producer, consumers, trigger | All engineers |
 | **02** | `02-database-schema.sql` | Full SQL DDL (PostgreSQL 15+) with comments for every table | Backend |
 | **03** | `03-http-api.md` | All REST endpoints (dashboard, public, admin, webhook, health) | Frontend, integrations |
-| **04** | `04-grpc-proto.md` | gRPC service definitions (saruman ↔ palantir-gateway internal RPCs) | Backend |
+| **04** | `04-grpc-proto.md` | gRPC service definitions (saruman ↔ palantir internal RPCs) | Backend |
 | **05** | `05-websocket-protocol.md` | WS frame protocol for OBS browser source, sequence numbers, reconnect, close codes | Friend (WS gateway) |
 | **06** | `06-webhook-schemas.md` | Payment provider webhook formats (Midtrans, Xendit, Pivot stub), signature verification, idempotency | Backend |
 | **07** | `07-config-schema.md` | Per-service config env vars + future One Ring keys | Ops, Backend |
 | **08** | `08-flow-diagrams.md` | End-to-end flows: donation, refund, payout, token rotation, WS reconnect, idempotency, reconciliation | All engineers |
+| **09** | `09-internal-provider-events.md` | Frozen Palantir → Saruman provider-result events (`pg.gateway.*`) | Backend |
+| **10** | `10-posting-templates.md` | Frozen ledger posting templates for capture, settle, payout reserve/complete/release, refund | Backend |
+| **11** | `11-operation-keys.md` | Frozen business-layer operation keys and provider-layer derivation rules | Backend |
+
+**Contract drift resolution:** see `planning/CONTRACT_DRIFT.md` for the authoritative Phase 0 freeze of all known conflicts.
 
 ---
 
@@ -47,11 +52,11 @@
 
 | Service | Owns | Schemas it implements |
 |---|---|---|
-| **ingest-api** (Go) | public donation page, webhook edge | 00, 03 (§Public), 06, 01 (intent events) |
+| **ingest** (Go) | public donation page, webhook edge | 00, 03 (§Public), 06, 01 (intent events) |
 | **saruman** (Go) | donation engine, double-entry ledger, idempotency | 00, 01 (donation events), 02 (most), 04 (palantir client) |
-| **palantir-gateway** (Go) | payment provider broker | 02 (gateway_* tables), 04 (service impl), 06 |
+| **palantir** (Go) | payment provider broker | 02 (gateway_* tables), 04 (service impl), 06 |
 | **tolkien** (Go) | dashboard + auth + token issuance | 00, 01 (streamer events), 02 (sessions), 03 (§Streamer) |
-| **ithildin / WS-gateway** (Go) | OBS overlay WS proxy + token validation | 00, 02 (streamers read), 03 (§Internal), 05 (WS), 01 (subscribes) |
+| **ws-gateway** (Go) | OBS overlay WS proxy + token validation | 00, 02 (streamers read), 03 (§Internal), 05 (WS), 01 (subscribes) |
 
 ---
 

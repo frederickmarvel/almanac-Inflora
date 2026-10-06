@@ -1,6 +1,6 @@
-# 04 — gRPC Proto Definitions (saruman ↔ palantir-gateway)
+# 04 — gRPC Proto Definitions (saruman ↔ palantir)
 
-> Internal RPCs between saruman (engine) and palantir-gateway (provider broker).
+> Internal RPCs between saruman (engine) and palantir (provider broker).
 > Used for: CreateTopUp, SettleTopUp, CreateWithdrawal, SettleWithdrawal, CreateRefund.
 > Auth via shared header: `authorization: Bearer <engine-api-key>`.
 

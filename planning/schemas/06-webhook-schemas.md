@@ -1,7 +1,7 @@
 # 06 — Webhook Schemas (Payment Providers)
 
 > Inflora accepts webhooks from multiple payment providers.
-> All webhooks MUST be signature-verified at the edge before any DB or business action.
+> All webhooks MUST be signature-verified by **palantir** (constant-time compare) before any DB or business action. Ingest only enforces method, content-type, and body size, then forwards the raw bytes to palantir's `SettleTopUp` gRPC (D-002/D-003).
 > All webhooks MUST be idempotent — see `00-frozen-contracts.md` §5.
 
 ---
@@ -214,46 +214,48 @@ func detectProvider(req *http.Request) string {
 
 ---
 
-## 6. Idempotency at edge (mandatory)
+## 6. Idempotency (mandatory; dedupe at Palantir — D-012)
 
-Before processing, dedupe via `idempotency` table:
+Provider webhook idempotency is enforced by **palantir**, not ingest:
+
+- `SettleTopUp` dedupes by `(provider_name, provider_event_id)` against the `webhook_events` UNIQUE constraint `(provider_name, provider_event_id)`.
+- On duplicate, palantir returns the already-processed result and ingest responds 200 OK to the provider.
 
 ```sql
--- Pseudo-SQL inside ingest-api
-INSERT INTO idempotency (key, endpoint, request_hash, processed_at)
-VALUES ($1, $2, $3, NOW())
-ON CONFLICT (key) DO NOTHING
-RETURNING id;
+-- Palantir, in the same transaction as the gateway_topups update
+INSERT INTO webhook_events (provider_name, provider_event_id, payload_hash, payload)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT (provider_name, provider_event_id) DO NOTHING;
 ```
-
-- If row returned → first writer; proceed with processing.
-- If no row → duplicate; return 200 OK with cached `response_body`.
 
 **Why this is critical:** Midtrans retries up to 30 times if it gets non-2xx. Without idempotency, every retry = duplicate ledger entries = money lost.
 
 ---
 
-## 7. Processing flow (after signature + idempotency pass)
+## 7. Processing flow (signature + idempotency at Palantir — D-001/D-002/D-003)
 
 ```
-ingest-api:webhook                                 saruman
-        │                                              │
-        │  parse body → detect event_type              │
-        │                                              │
-        │  event_type = topup.completed                │
-        │ ────────────────────────────────────────────▶ │
-        │   palantir.CreateTopUp                      │
-        │                                              │
-        │  event_type = topup.failed                  │
-        │ ────────────────────────────────────────────▶ │
-        │   (just update donation, no ledger entry)    │
-        │                                              │
-        │  event_type = refund.completed              │
-        │ ────────────────────────────────────────────▶ │
-        │   (update refund.status)                     │
+ingest (HTTP edge)         palantir (broker)                    saruman (engine)
+        │                              │                                   │
+        │  enforce method/content-type │                                   │
+        │  /body-size; NO signature    │                                   │
+        │  verification, NO DB writes  │                                   │
+        │ ──── gRPC SettleTopUp ──────▶│                                   │
+        │  (raw_payload bytes)         │ verify signature (const-time)     │
+        │                              │ dedupe (provider_name,            │
+        │                              │   provider_event_id)              │
+        │                              │ write gateway_topups +            │
+        │                              │   webhook_events (same TX)        │
+        │                              │ outbox → pg.gateway.topup.*       │
+        │                              │ ───────────── NATS ──────────────▶│
+        │                              │                                   │ durable consumer_inbox
+        │                              │                                   │ state transition + ledger
+        │                              │                                   │ outbox → donation.charged.v1
 ```
 
-Ingest-api calls saruman gRPC `SettleTopUp` (or similar). Saruman writes ledger + publishes `donation.charged.v1`.
+**Canonical flow:** provider webhook → `ingest` HTTP (edge only) → `palantir` `SettleTopUp` gRPC (signature verify + dedupe) → `palantir` writes `gateway_topups` + `webhook_events` in one TX → outbox emits `pg.gateway.topup.completed.v1` (or failed/expired variant) → `saruman` durable `consumer_inbox` consumes → `saruman` performs donation state transition + ledger write + emits `donation.charged.v1` via outbox.
+
+**Saruman does NOT expose gRPC `SettleDonation` and never has (D-001).**
 
 ---
 
@@ -276,7 +278,7 @@ We MUST return 5xx for transient errors so providers back off and retry. We MUST
 
 When a provider changes their payload format:
 1. Detect via `X-Provider-Version` header (if they send one) or version field in payload.
-2. Map old shape → new shape inside `ingest-api`.
+2. Map old shape → new shape inside `ingest`.
 3. NEVER pass raw provider payload to saruman. Always normalize first.
 
 ---

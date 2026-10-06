@@ -48,7 +48,7 @@ wss://overlay.inflora.app/ws?token=ok_<full-token>
 ```
 
 Optional query params:
-- `?from_seq=42` — request catch-up starting from seq 42 (instead of client-sent `catch_up` frame).
+- `?since=42` — request catch-up starting from seq 42 (instead of client-sent `catch_up` frame).
 
 Required headers:
 - `Sec-WebSocket-Protocol: inflora-overlay.v1`
@@ -73,7 +73,7 @@ Required headers:
 
 | Field | Type | Notes |
 |---|---|---|
-| `replay_window_seconds` | int | How far back the server can replay from NATS log. Client uses this to decide when catch-up is impossible. |
+| `replay_window_seconds` | int | How far back the server can replay from the durable `ws_projection_frames` projection (D-015). Client uses this to decide when catch-up is impossible. |
 | `high_water_mark` | int | Current highest `seq` issued. Client treats anything ≤ this as already-seen-or-current. |
 | `version` | string | Protocol version. Mismatch → reconnect attempt with different protocol. |
 
@@ -195,6 +195,20 @@ Server closes WS after this. See close codes.
 
 ---
 
+### 3.8 Resync required
+
+```json
+{
+  "type":         "system.resync_required",
+  "reason":       "GAP_EXCEEDS_RETENTION" | "SEQ_TOO_OLD" | "WRAP_RESET",
+  "streamer_id":  "abc-123-def-456"
+}
+```
+
+Sent when the requested replay `seq` is older than the retention window or a gap exceeds it (D-015). Client should reset `lastSeq` to 0 and re-request full replay (if available).
+
+---
+
 ## 4. Client → Server frames
 
 ### 4.1 Catch-up request
@@ -249,8 +263,10 @@ WS Close frame:
 | Property | Value |
 |---|---|
 | Scope | Per streamer |
-| Starts at | 1 on gateway boot for that streamer |
+| Allocation | Durable in PostgreSQL `ws_projection_sequences` under a row lock (D-015) |
+| Starts at | 1 per streamer; persists across gateway restarts and replicas |
 | Increments by | 1 per fanout to that streamer |
+| Uniqueness | `(streamer_id, seq)` UNIQUE across all replicas |
 | Wraps at | `2^53 - 1` (JS safe int) |
 | Monotonic | Yes, even across reconnects |
 
@@ -263,10 +279,11 @@ WS Close frame:
 
 ### Gateway invariants
 
-- Sequence is per-streamer across all connected clients.
-- Replay from NATS log respects seq order.
+- Sequence is per-streamer across all connected clients and all replicas.
+- Sequence allocation and replay are owned by the durable PostgreSQL projection (D-015): `ws_projection_sequences`, `ws_projection_frames`, `ws_projection_inbox`.
+- Replay supports `?since=<seq>` and emits `system.resync_required` when the requested seq is too old or the gap exceeds the retention window.
 - Gaps allowed (e.g., 1, 2, 3, 5 — meaning 4 was filtered or undelivered).
-- Wrap-around at `2^53 - 1`: gateway resets to 1; sends `catch_up_end` with `last_seq: 0` to force full replay (if available).
+- Wrap-around at `2^53 - 1`: gateway emits `system.resync_required` to force full replay (if available).
 
 ---
 

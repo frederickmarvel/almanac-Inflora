@@ -5,7 +5,12 @@
 -- Currency: IDR only. amount_idr is BIGINT (no decimals).
 -- Money: append-only ledger. Never UPDATE/DELETE ledger_entries.
 -- Schema ownership: saruman owns streamer/ledger tables; palantir owns
---   gateway_* tables; tolkien extends users table; ithildin reads only.
+--   gateway_* tables; tolkien extends users table; ws-gateway reads only.
+-- Reliability tables (ledger_transactions, outbox_events, consumer_inbox,
+--   event_dead_letters, ws_projection_*) are co-owned infrastructure:
+--   ledger_transactions (saruman), outbox_events (all producers),
+--   consumer_inbox/event_dead_letters (all consumers), ws_projection_*
+--   (ws-gateway). Phase 1 (see CONTRACT_DRIFT D-013/D-015/D-018/D-019).
 -- ============================================================================
 
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";  -- gen_random_uuid()
@@ -219,24 +224,49 @@ CREATE TABLE ledger_accounts (
 );
 
 -- ============================================================================
+-- ledger_transactions (saruman owns) -- one row per logical financial operation
+-- ============================================================================
+
+CREATE TABLE ledger_transactions (
+  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  operation_key     VARCHAR(128) NOT NULL UNIQUE,    -- frozen UUIDv5 string from 11-operation-keys
+  correlation_id    UUID,                             -- groups ledger entries from one txn
+  causation_id      UUID,                             -- parent operation, if any
+  transaction_type  VARCHAR(60) NOT NULL,              -- e.g. DONATION_CAPTURE, PAYOUT_RESERVATION
+  streamer_id       UUID,                             -- nullable for global transactions
+  reversal_of       UUID REFERENCES ledger_transactions(id), -- self-FK for compensation chains
+  metadata          JSONB,
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT chk_reversal_consistency CHECK (
+    (reversal_of IS NULL) OR (reversal_of <> id)
+  )
+);
+
+CREATE INDEX idx_ledger_tx_streamer_time ON ledger_transactions (streamer_id, created_at DESC);
+CREATE INDEX idx_ledger_tx_correlation   ON ledger_transactions (correlation_id);
+CREATE INDEX idx_ledger_tx_causation     ON ledger_transactions (causation_id);
+CREATE INDEX idx_ledger_tx_reversal      ON ledger_transactions (reversal_of) WHERE reversal_of IS NOT NULL;
+
+-- ============================================================================
 -- ledger_entries (saruman owns) -- APPEND-ONLY
 -- ============================================================================
 
 CREATE TABLE ledger_entries (
-  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  streamer_id     UUID NOT NULL REFERENCES streamers(id),
-  account_id      UUID NOT NULL REFERENCES ledger_accounts(id),
-  direction       ledger_direction NOT NULL,
-  amount_idr      BIGINT NOT NULL CHECK (amount_idr > 0),
-  entry_type      ledger_entry_type NOT NULL,
-  external_ref    VARCHAR(128),
-  donation_id     UUID,
-  payout_id       UUID,
-  hold_id         UUID,                            -- if hold-related
-  reversal_of     UUID REFERENCES ledger_entries(id),
-  correlation_id  UUID,
-  metadata        JSONB,
-  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  id                     UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  streamer_id            UUID NOT NULL REFERENCES streamers(id),
+  account_id             UUID NOT NULL REFERENCES ledger_accounts(id),
+  ledger_transaction_id  UUID NOT NULL REFERENCES ledger_transactions(id),
+  direction              ledger_direction NOT NULL,
+  amount_idr             BIGINT NOT NULL CHECK (amount_idr > 0),
+  entry_type             ledger_entry_type NOT NULL,
+  external_ref           VARCHAR(128),
+  donation_id            UUID,
+  payout_id              UUID,
+  hold_id                UUID,                            -- if hold-related
+  reversal_of            UUID REFERENCES ledger_entries(id),
+  correlation_id         UUID,
+  metadata               JSONB,
+  created_at             TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX idx_ledger_entries_streamer_time ON ledger_entries (streamer_id, created_at DESC);
@@ -246,6 +276,7 @@ CREATE INDEX idx_ledger_entries_correlation ON ledger_entries (correlation_id);
 CREATE INDEX idx_ledger_entries_donation ON ledger_entries (donation_id) WHERE donation_id IS NOT NULL;
 CREATE INDEX idx_ledger_entries_payout ON ledger_entries (payout_id) WHERE payout_id IS NOT NULL;
 CREATE INDEX idx_ledger_entries_hold ON ledger_entries (hold_id) WHERE hold_id IS NOT NULL;
+CREATE INDEX idx_ledger_entries_tx ON ledger_entries (ledger_transaction_id);
 
 CREATE RULE no_update_ledger_entries AS ON UPDATE TO ledger_entries DO INSTEAD NOTHING;
 CREATE RULE no_delete_ledger_entries AS ON DELETE TO ledger_entries DO INSTEAD NOTHING;
@@ -280,6 +311,9 @@ CREATE TABLE donations (
   youtube_start_sec       INTEGER,                                        -- clip start
   youtube_end_sec         INTEGER,                                        -- clip end
   -- Display config (snapshot at time of donation)
+  display_rate_idr_per_sec BIGINT,                                        -- streamer-selected rate at intent creation
+  display_min_sec         INTEGER,                                        -- streamer-selected lower bound snapshot
+  display_max_sec         INTEGER,                                        -- streamer-selected upper bound snapshot
   display_duration_sec    INTEGER,                                        -- computed: amount / rate
   -- Provider
   provider_name           VARCHAR(40),                                    -- 'midtrans', 'xendit'
@@ -530,7 +564,7 @@ CREATE INDEX idx_recon_unresolved
   ON reconciliation_drift (detected_at DESC) WHERE resolved_at IS NULL;
 
 -- ============================================================================
--- gateway_* tables (palantir-gateway owns)
+-- gateway_* tables (palantir owns)
 -- ============================================================================
 
 CREATE TABLE gateway_topups (
@@ -582,6 +616,139 @@ CREATE TABLE webhook_events (
   processed_at        TIMESTAMPTZ,
   CONSTRAINT uq_webhook_event UNIQUE (provider_name, provider_event_id)
 );
+
+-- ============================================================================
+-- outbox_events (all producers) -- transactional outbox (D-018)
+-- ============================================================================
+
+CREATE TABLE outbox_events (
+  event_id         UUID PRIMARY KEY,                              -- UUIDv4, stable across retries
+  producer         VARCHAR(40)  NOT NULL,                         -- 'saruman','palantir','tolkien','ingest','ws-gateway'
+  event_type       VARCHAR(120) NOT NULL,                         -- e.g. donation.charged.v1, pg.gateway.topup.completed.v1
+  event_version    VARCHAR(16)  NOT NULL,                         -- matches the .v<N> in event_type
+  aggregate_type   VARCHAR(40)  NOT NULL,                         -- e.g. donation, payout, refund, streamer
+  aggregate_id     UUID         NOT NULL,
+  streamer_id      UUID,                                          -- nullable for global events
+  subject          VARCHAR(200) NOT NULL,                         -- NATS subject
+  envelope         JSONB        NOT NULL,                         -- full frozen envelope (00 §1)
+  occurred_at      TIMESTAMPTZ  NOT NULL,                         -- producer-set
+  available_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW(),           -- earliest dispatcher claim
+  attempts         INT          NOT NULL DEFAULT 0,
+  claimed_at       TIMESTAMPTZ,
+  claimed_by       VARCHAR(80),                                   -- worker name
+  published_at     TIMESTAMPTZ,
+  dead_lettered_at TIMESTAMPTZ,
+  last_error       TEXT,
+  CONSTRAINT chk_event_version_present CHECK (length(event_version) > 0),
+  CONSTRAINT chk_envelope_object       CHECK (jsonb_typeof(envelope) = 'object'),
+  CONSTRAINT chk_subject_present       CHECK (length(subject) > 0)
+);
+
+CREATE INDEX idx_outbox_due_unpublished
+  ON outbox_events (available_at)
+  WHERE published_at IS NULL AND dead_lettered_at IS NULL;
+
+CREATE INDEX idx_outbox_claimed_at
+  ON outbox_events (claimed_at)
+  WHERE claimed_at IS NOT NULL AND published_at IS NULL;
+
+CREATE INDEX idx_outbox_aggregate ON outbox_events (aggregate_type, aggregate_id);
+
+-- ============================================================================
+-- consumer_inbox (all consumers) -- durable dedup (D-013)
+-- ============================================================================
+
+CREATE TABLE consumer_inbox (
+  consumer_name VARCHAR(80)  NOT NULL,     -- e.g. saruman.topup-completed
+  event_id      UUID         NOT NULL,
+  event_type    VARCHAR(120) NOT NULL,
+  streamer_id   UUID,
+  received_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  processed_at  TIMESTAMPTZ,
+  last_error    TEXT,
+  attempts      INT          NOT NULL DEFAULT 0,
+  PRIMARY KEY (consumer_name, event_id)
+);
+
+CREATE INDEX idx_inbox_unprocessed
+  ON consumer_inbox (consumer_name, received_at)
+  WHERE processed_at IS NULL;
+
+-- ============================================================================
+-- event_dead_letters (all consumers) -- durable, inspectable, replayable (D-019)
+-- ============================================================================
+
+CREATE TABLE event_dead_letters (
+  id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  consumer_name    VARCHAR(80)  NOT NULL,
+  event_id         UUID         NOT NULL,
+  subject          VARCHAR(200) NOT NULL,
+  envelope         JSONB        NOT NULL,
+  attempt_count    INT          NOT NULL,
+  error_class      VARCHAR(80)  NOT NULL,
+  last_error       TEXT         NOT NULL,
+  first_failed_at  TIMESTAMPTZ  NOT NULL,
+  last_failed_at   TIMESTAMPTZ  NOT NULL,
+  replayed_at      TIMESTAMPTZ,
+  replayed_by      VARCHAR(80),
+  replay_notes     TEXT,
+  CONSTRAINT uq_dead_letter_event UNIQUE (consumer_name, event_id),
+  CONSTRAINT chk_dead_letter_attempts CHECK (attempt_count > 0),
+  CONSTRAINT chk_dead_letter_envelope CHECK (jsonb_typeof(envelope) = 'object')
+);
+
+CREATE INDEX idx_dead_letters_unreplayed
+  ON event_dead_letters (last_failed_at DESC)
+  WHERE replayed_at IS NULL;
+
+CREATE INDEX idx_dead_letters_consumer
+  ON event_dead_letters (consumer_name, last_failed_at DESC);
+
+-- ============================================================================
+-- ws_projection_* (ws-gateway owns) -- durable seq + replay (D-015)
+-- ============================================================================
+
+CREATE TABLE ws_projection_inbox (
+  consumer_name VARCHAR(80) NOT NULL,   -- 'ws-gateway.donation-charged', etc.
+  event_id      UUID         NOT NULL,
+  event_type    VARCHAR(120) NOT NULL,
+  received_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  processed_at  TIMESTAMPTZ,
+  PRIMARY KEY (consumer_name, event_id)
+);
+
+CREATE INDEX idx_ws_projection_inbox_unprocessed
+  ON ws_projection_inbox (consumer_name, received_at)
+  WHERE processed_at IS NULL;
+
+CREATE TABLE ws_projection_sequences (
+  streamer_id  UUID PRIMARY KEY,
+  next_seq     BIGINT NOT NULL DEFAULT 1,   -- next seq to allocate (seq >= 1)
+  updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT chk_next_seq_positive CHECK (next_seq >= 1)
+);
+
+CREATE TABLE ws_projection_frames (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  streamer_id     UUID NOT NULL,
+  seq             BIGINT NOT NULL,                       -- monotonic, starts at 1
+  source_event_id UUID NOT NULL,                         -- unique per source delivery
+  event_type      VARCHAR(120) NOT NULL,                 -- e.g. donation.charged.v1
+  payload         JSONB NOT NULL,                         -- frozen frame JSON
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  expires_at      TIMESTAMPTZ,                           -- retention / replay-limit cutoff
+  CONSTRAINT uq_ws_frame_seq UNIQUE (streamer_id, seq),
+  CONSTRAINT uq_ws_frame_source UNIQUE (source_event_id),
+  CONSTRAINT chk_ws_frame_seq_positive CHECK (seq > 0),
+  CONSTRAINT chk_ws_frame_payload_object CHECK (jsonb_typeof(payload) = 'object')
+);
+
+CREATE INDEX idx_ws_frames_streamer_seq
+  ON ws_projection_frames (streamer_id, seq DESC);
+
+CREATE INDEX idx_ws_frames_expires
+  ON ws_projection_frames (expires_at)
+  WHERE expires_at IS NOT NULL;
 
 -- ============================================================================
 -- VIEWS

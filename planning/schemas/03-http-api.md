@@ -4,7 +4,7 @@
 
 ---
 
-## 4. Public endpoints (ingest-api)
+## 4. Public endpoints (ingest)
 
 ### POST /v1/donations
 
@@ -69,7 +69,7 @@
 - INSERT donations (INTENT_CREATED, includes voice/youtube, donor_email, computed display_duration_sec)
 - INSERT idempotency
 - Publish `donation.intent.created.v1.<streamer_id>`
-- Call palantir-gateway gRPC `CreateTopUp` with payment_method → provider returns payment_url
+- Call palantir gRPC `CreateTopUp` with payment_method → provider returns payment_url
 
 ---
 
@@ -124,6 +124,7 @@
 
 **Validation:**
 - `display_rate_idr_per_sec > 0`
+- `display_min_sec > 0`
 - `display_min_sec ≤ display_max_sec`
 - `min_donation_idr ≤ max_donation_idr`
 - `min_donation_idr >= 1000` (system floor)
@@ -367,7 +368,7 @@ If `auto_select: true`, server picks all REQUESTED payouts FIFO.
 
 **Side effects:**
 - UPDATE payout_batches SET status=EXECUTING, executing_at=NOW, provider_batch_id=?
-- Call palantir-gateway gRPC `ExecuteBatch(batch_id, payout_ids, total)`
+- Call palantir gRPC `ExecuteBatch(batch_id, payout_ids, total)`
 - For each payout: UPDATE payouts SET status=PROCESSING, processed_at=NOW
 - Publish `payout.batch.executed.v1.<streamer_id>` for each payout
 

@@ -9,21 +9,21 @@
 
 | Topic | Producer | Consumers | Trigger |
 |---|---|---|---|
-| `donation.intent.created.v1` | ingest-api | saruman | Donor submits donation form |
-| `donation.charged.v1` | saruman | realtime-gateway, analytics | Provider capture webhook + ledger |
-| `donation.settled.v1` | saruman | realtime-gateway (delayed alert), analytics | Provider settlement webhook (T+N) |
+| `donation.intent.created.v1` | ingest | saruman | Donor submits donation form |
+| `donation.charged.v1` | saruman | ws-gateway, analytics | Provider capture webhook + ledger |
+| `donation.settled.v1` | saruman | ws-gateway (delayed alert), analytics | Provider settlement webhook (T+N) |
 | `donation.failed.v1` | saruman | analytics | Provider failure OR intent expiry |
 | `donation.refunded.v1` | saruman | analytics | Refund completed |
 | `donation.receipt_sent.v1` | saruman | analytics | Donor receipt email sent |
-| `payout.requested.v1` | tolkien | saruman, palantir-gateway | Streamer requests payout |
-| `payout.batched.v1` | tolkien (admin) | saruman, palantir-gateway | FinOps assigns payouts to a batch |
-| `payout.settled.v1` | palantir-gateway | saruman, analytics | Bank transfer confirmed |
-| `payout.failed.v1` | palantir-gateway | saruman | Bank rejects |
-| `payout.batch.executed.v1` | tolkien (admin) | saruman, palantir-gateway | FinOps executes bulk batch |
-| `payout.batch.completed.v1` | palantir-gateway | saruman, analytics | All payouts in batch settled |
-| `payout.batch.failed.v1` | palantir-gateway | saruman, analytics | Bulk batch failed |
-| `streamer.registered.v1` | tolkien | saruman, palantir-gateway | Signup |
-| `streamer.settings.updated.v1` | tolkien | saruman, realtime-gateway | Streamer updates settings |
+| `payout.requested.v1` | tolkien | saruman, palantir | Streamer requests payout |
+| `payout.batched.v1` | tolkien (admin) | saruman, palantir | FinOps assigns payouts to a batch |
+| `payout.settled.v1` | palantir | saruman, analytics | Bank transfer confirmed |
+| `payout.failed.v1` | palantir | saruman | Bank rejects |
+| `payout.batch.executed.v1` | tolkien (admin) | saruman, palantir | FinOps executes bulk batch |
+| `payout.batch.completed.v1` | palantir | saruman, analytics | All payouts in batch settled |
+| `payout.batch.failed.v1` | palantir | saruman, analytics | Bulk batch failed |
+| `streamer.registered.v1` | tolkien | saruman, palantir | Signup |
+| `streamer.settings.updated.v1` | tolkien | saruman, ws-gateway | Streamer updates settings |
 | `overlay.token.rotated.v1` | tolkien | saruman, audit | OBS token rotated |
 | `fund_hold.created.v1` | tolkien (admin/finops) | saruman | Hold placed on staff |
 | `fund_hold.released.v1` | tolkien (admin/finops) | saruman | Hold released |
@@ -33,7 +33,7 @@
 
 ## 1. donation.intent.created.v1
 
-**Producer:** `ingest-api`
+**Producer:** `ingest`
 **Consumers:** `saruman` (validates, transitions to CHARGED on payment)
 **Trigger:** Donor submits donation form.
 
@@ -79,7 +79,7 @@
 ## 2. donation.charged.v1
 
 **Producer:** `saruman`
-**Consumers:** `realtime-gateway` (immediate fanout), `analytics`
+**Consumers:** `ws-gateway` (immediate fanout), `analytics`
 **Trigger:** Provider capture webhook AND ledger write commits.
 
 **Subject:** `donation.charged.v1.<streamer_id>`
@@ -100,7 +100,10 @@
   "settlement_status":      "PENDING",
   "donor_display_name":     "Andi",
   "is_anonymous":           false,
-  "message":                "Semangat streamingnya bang!",
+  "message":                  "Semangat streamingnya bang!",
+  "display_rate_idr_per_sec": 1000,
+  "display_min_sec":          5,
+  "display_max_sec":          60,
   "voice_url":              "https://cdn.inflora.app/voice/abc.mp3",
   "voice_duration_sec":     8,
   "youtube_url":            "https://youtu.be/xyz",
@@ -120,7 +123,9 @@
 **Invariants:**
 - Exactly 2 ledger entries: `donor_cash +gross_charged`, `streamer_pending +net_idr` (or +amount-fee).
 - `donation.status = CHARGED`, `settlement_status = PENDING`.
-- `display_duration_sec = clamp(amount_idr / display_rate_idr_per_sec, min, max)` — snapshot at capture.
+- Each streamer chooses and persists `display_rate_idr_per_sec`, `display_min_sec`, and `display_max_sec` in Tolkien settings.
+- Ingest snapshots those values when the intent is created, so later settings changes cannot alter an in-flight or paid donation.
+- `display_duration_sec = clamp(floor(amount_idr / display_rate_idr_per_sec), display_min_sec, display_max_sec)`.
 - Idempotent: if webhook retries, this event re-fires only if NOT previously emitted.
 
 ---
@@ -128,7 +133,7 @@
 ## 3. donation.settled.v1
 
 **Producer:** `saruman`
-**Consumers:** `realtime-gateway` (optional "settled" notification, configurable), `analytics`
+**Consumers:** `ws-gateway` (optional "settled" notification, configurable), `analytics`
 **Trigger:** Provider settlement webhook fires T+N (typically minutes for QRIS, T+1 for VA, T+2-3 for CC).
 
 **Subject:** `donation.settled.v1.<streamer_id>`
@@ -239,7 +244,7 @@
 ## 8. payout.batched.v1  (NEW)
 
 **Producer:** `tolkien` (admin/finops action: `POST /v1/admin/payout-batches`)
-**Consumers:** `saruman`, `palantir-gateway`, `analytics`
+**Consumers:** `saruman`, `palantir`, `analytics`
 **Trigger:** FinOps creates a batch.
 
 **Subject:** `payout.batched.v1.<streamer_id>` (one per payout in batch)
@@ -276,7 +281,7 @@
 ## 11. payout.batch.executed.v1  (NEW)
 
 **Producer:** `tolkien` (admin/finops: `POST /v1/admin/payout-batches/:id/execute`)
-**Consumers:** `saruman`, `palantir-gateway`, `analytics`
+**Consumers:** `saruman`, `palantir`, `analytics`
 **Trigger:** FinOps executes a batch.
 
 **Subject:** `payout.batch.executed.v1.<streamer_id>` (one per payout in batch)
@@ -298,7 +303,7 @@
 
 ## 12. payout.batch.completed.v1  (NEW)
 
-**Producer:** `palantir-gateway`
+**Producer:** `palantir`
 **Consumers:** `saruman`, `analytics`
 **Trigger:** All payouts in batch settled.
 
@@ -320,7 +325,7 @@
 
 ## 13. payout.batch.failed.v1  (NEW)
 
-**Producer:** `palantir-gateway`
+**Producer:** `palantir`
 **Consumers:** `saruman`, `analytics`
 **Trigger:** Bulk batch failed (provider-side).
 
@@ -345,7 +350,7 @@
 ## 15. streamer.settings.updated.v1  (NEW)
 
 **Producer:** `tolkien`
-**Consumers:** `saruman` (display_rate used for new donations), `realtime-gateway` (cache)
+**Consumers:** `saruman` (display_rate used for new donations), `ws-gateway` (cache)
 **Trigger:** Streamer updates their settings (display rate, allowed content types, etc).
 
 **Subject:** `streamer.settings.updated.v1.<streamer_id>`

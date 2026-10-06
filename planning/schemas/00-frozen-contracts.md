@@ -33,7 +33,7 @@ Every event published to NATS MUST be JSON-encoded with this envelope:
 | `event_type` | string | yes | Format: `<domain>.<entity>.<verb>.<version>`. |
 | `event_version` | int | yes | Stringified in JSON. Matches the version in topic. |
 | `occurred_at` | RFC 3339 | yes | Producer-set. UTC, ms precision. |
-| `producer` | string | yes | Service name: `ingest-api`, `saruman`, `palantir-gateway`, `tolkien`, `ithildin`. |
+| `producer` | string | yes | Service name: `ingest`, `saruman`, `palantir`, `tolkien`, `ws-gateway`. |
 | `streamer_id` | uuid | yes (nullable for global events) | The streamer this event relates to. |
 | `causation_id` | uuid | no | Parent event_id if this is a reaction. |
 | `correlation_id` | uuid | no | Groups events from one logical transaction. |
@@ -85,12 +85,12 @@ Every frame sent to an OBS overlay WebSocket MUST carry a per-streamer monotonic
 
 | Field | Type | Notes |
 |---|---|---|
-| `seq` | int | Per-streamer. Starts at 1 on gateway boot. Increments by 1. |
+| `seq` | int | Per-streamer. Durable, allocated under a row lock in `ws_projection_sequences` (D-015). Starts at 1, persists across restarts/replicas. Increments by 1. |
 | wrap | at `2^53 - 1` | Client should treat wrap-around as reconnect trigger. |
 
 **Why:** client uses `seq` to detect missed events and request catch-up after reconnect. See `05-websocket-protocol.md` §7.
 
-**Gateway invariant:** `seq` is monotonic per streamer across all clients (not per-connection). All OBS clients for streamer X see the same `seq` series.
+**Gateway invariant:** `seq` is monotonic per streamer across all clients (not per-connection) and across all replicas. `(streamer_id, seq)` is UNIQUE in the durable `ws_projection_frames` projection, so all OBS clients for streamer X see the same `seq` series even after a gateway restart.
 
 ---
 
@@ -145,14 +145,15 @@ Internal only. Friend's WS gateway calls this on connect.
 
 ```
 POST /v1/internal/validate-overlay-token
-Authorization: Bearer <internal-api-key>
+X-Internal-Api-Key: <internal-api-key>           // NOT Authorization: Bearer (D-010)
+Content-Type: application/json
 Body: { "token": "ok_xxx" }
 
 200 OK: { "streamer_id": "abc-...", "expires_at": "..." }
 401 Unauthorized: { "error": { "code": "INVALID_TOKEN" } }
 ```
 
-Cache result for 60s in `tolkien` to avoid bcrypt per WS connect.
+**Important (Phase 0, D-010):** internal HTTP uses the header `X-Internal-Api-Key`. The header `Authorization: Bearer` is reserved for end-user session/overlay tokens. `Authorization: Bearer <internal-api-key>` shown in older revisions is incorrect and MUST NOT be used. Cache result for 60s in `tolkien` to avoid bcrypt per WS connect.
 
 ---
 

@@ -709,8 +709,9 @@ func (s *Server) CreateDonation(w http.ResponseWriter, r *http.Request) {
     // lookup MDR rate for provider+method
     // compute mdr_idr = amount_idr * mdr_bps / 10000
     // compute gross_charged_idr = amount_idr + mdr_idr
-    // compute display_duration_sec = clamp(amount_idr / streamer.display_rate, min, max)
-    // INSERT donations (INTENT_CREATED, expires_at=now+15min)
+    // read the streamer's persisted display_rate_idr_per_sec/min/max settings
+    // compute display_duration_sec = clamp(floor(amount_idr / display_rate), min, max)
+    // INSERT donations with immutable rate/min/max/duration snapshots (INTENT_CREATED, expires_at=now+15min)
     // INSERT idempotency (key = "intent:" + donation_id)
     // call palantir CreateTopUp → get payment_url
     // UPDATE donations SET provider_charge_id = ?
