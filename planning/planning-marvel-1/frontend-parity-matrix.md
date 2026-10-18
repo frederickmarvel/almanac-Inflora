@@ -76,7 +76,7 @@
 
 | # | Remote function (evidence) | Backend disposition | Work item |
 |---|---|---|---|
-| E-1 | `summary()` → `{available, pending, lifetime, months[6], sources: campaigns|clips|donations}` (`earningsRepository.ts:5,12-14`) | EXTEND `GET /v1/me/balance` — monthly chart + source split requires ledger source tagging (drift row: frozen posting template §1 shape) | P2 |
+| E-1 | `summary()` → `{available, pending, lifetime, months[6], sources: campaigns|clips|donations}` (`earningsRepository.ts:5,12-14`) | EXTEND `GET /v1/me/balance` — monthly chart + source split requires ledger source tagging (drift row: frozen posting template §1 shape) | P2 — **D-032 design in flight 2026-10-18** (ledger `source` tag + earnings shape) |
 | E-2 | `withdraw()` → whole balance; 400 if ≤ 0 (`:6,17`) | `POST /v1/me/payouts` per Marvel `03-withdrawals.md` Phase C; frontend maps 400/422 codes | Marvel phases C–E; React wiring P2 |
 
 ## 8. Assets / uploads
@@ -104,12 +104,12 @@ Each verb below is today a client mutation (`models/stores/liveStore.ts:221-316`
 | # | Verb | PROPOSED endpoint | Phase |
 |---|---|---|---|
 | M-1 | message approve / hide / takedown / restore | `POST /v1/me/live/messages/{id}/moderation` | P3 |
-| M-2 | donation approve / reject | `POST /v1/me/live/donations/{id}/moderation` | P2 (paid-donation approve), P3 (full) |
+| M-2 | donation approve / reject | `POST /v1/me/donations/{id}/review` (`{"decision":"approve"|"reject"}`) + a review-queue read — **owner-acked 2026-10-18 (D-038, in scope P2)**; reject = replay-safe takedown of an already-aired donation, terminal | P2 |
 | M-3 | call accept / hold / extend / end / decline | `POST /v1/me/live/calls/{id}/{action}` | P3 |
 | M-4 | widget toggle / trigger | `POST /v1/me/live/widgets/{id}/{action}` | P3 |
 | M-5 | marathon pause / lock / adjust | `POST /v1/me/live/marathon/{action}` | P3 |
 
-Server-owned review state: `status: review|flagged|approved|rejected`, `reviewEndsAt`, `airedAt` (10s constants from `rules/moderation.ts` / `donationReview.ts`).
+Server-owned review state (D-038, owner-amended 2026-10-18): donations air **immediately** at charge — no 10s pre-air window (owner decision; the old `reviewEndsAt`/10s timer model below is superseded). The server records moderation flags at charge (`moderation.ts` port → `flag_reason` badge in the dashboard queue); the creator's reject is post-hoc takedown and approve is an idempotent confirm. Display duration stays the streamer's per-rupiah pricing (`display_duration_sec`). Superseded model kept for history: ~~`status: review|flagged|approved|rejected`, `reviewEndsAt`, `airedAt` (10s constants from `rules/moderation.ts` / `donationReview.ts`)~~.
 
 ## 11. Dispositions summary
 
@@ -124,9 +124,10 @@ Server-owned review state: `status: review|flagged|approved|rejected`, `reviewEn
 
 ## 12. Contract-drift rows required before implementation (reviewer decision)
 
-1. D-031: rich tip payload extends frozen ingest intent §4 (widgetId/quantity/tier/media/call).
-2. D-032: ledger source tagging for earnings split (campaigns/clips/donations) — touches posting template §1.
-3. D-033: public `/v1/public/*` route family (unauthenticated reads: tip-session, creator page) + rate limiting + audit journal.
-4. D-034: `payment_method` additions (`QRIS`, `VIRTUAL_ACCOUNT`, `EWALLET_*`) vs mock's card/apple-pay/google-pay/paypal — display + provider mapping.
+1. D-031: rich tip payload extends frozen ingest intent §4 (widgetId/quantity/tier/media/call). — **implemented + pushed 2026-10-18 (ingest, saruman 00010, React).**
+2. D-032: ledger source tagging for earnings split (campaigns/clips/donations) — touches posting template §1. — **ACCEPTED (2026-10-18); design in flight this session.**
+3. D-033: public `/v1/public/*` route family (unauthenticated reads: tip-session, creator page) + rate limiting + audit journal. — **implemented + pushed 2026-10-18 (tolkien).**
+4. D-034: `payment_method` additions (`QRIS`, `VIRTUAL_ACCOUNT`, `EWALLET_*`) vs mock's card/apple-pay/google-pay/paypal — display + provider mapping. — **implemented + pushed 2026-10-18 (ingest edge 422, React methods).**
 5. D-035: supporter identity (anonymous donors → optional USER identities).
 6. D-036: full-array list responses at MVP (no cursor) — cursor only when repositories gain pagination.
+7. D-038: donation review state ownership — **owner-acked 2026-10-18 with amended semantics (immediate airing, post-hoc takedown, decision API in P2); redesign in flight this session.** (Sibling D-039 registered: chat-message moderation authority, P3.)
