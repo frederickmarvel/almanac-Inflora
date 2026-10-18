@@ -1,4 +1,15 @@
-# Inflora Backend Build Plan (Phased)
+# Inflora Backend Build Plan (Phased) — Archived
+
+> **Archived:** 2026-10-06.
+>
+> **Reason:** This original bootstrap/build plan was superseded by
+> [`../../planning/AI_BACKEND_COMPLETION_PLAN.md`](../../planning/AI_BACKEND_COMPLETION_PLAN.md),
+> which reflects the implemented polyrepo baseline, the Phase 0 contract freeze,
+> and the current reliability architecture. Keep this document for historical
+> context only; do not use it to choose the next implementation phase.
+>
+> **Preservation note:** the working-tree contract corrections that existed
+> before archival are retained in this copy.
 
 > **Guidance**
 > - **Use this when:** building or extending any backend service.
@@ -23,7 +34,7 @@ These rules prevent the most common mistakes. Internalize them.
 3. **Append-only ledger.** `ledger_entries` rows are never UPDATEd or DELETEd. Corrections are reversal entries with `reversal_of` set.
 4. **Idempotency keys are mandatory.** Every webhook, every external write. Format: `provider_name:event_id`. Stored in `idempotency` table with UNIQUE constraint.
 5. **Tokens are opaque with prefix.** `sk_<base64url>` for session, `ok_<base64url>` for overlay. Stored in DB as bcrypt hash. Never log the raw token.
-6. **Sequence numbers are per-streamer monotonic.** `seq` increments by 1 per fanout. Starts at 1 on gateway boot. Wraps at `2^53 - 1`.
+6. **Sequence numbers are per-streamer monotonic and durable.** `seq` increments by 1 per fanout, allocated from the PostgreSQL `ws_projection_sequences` table under a row lock and unique per `(streamer_id, seq)`. It persists across restarts and replicas (does NOT reset on boot). Wraps at `2^53 - 1`.
 7. **Concurrency: per-streamer isolation.** WebSocket hub keyed by `streamer_id`. Lock granularity = per hub, not global.
 8. **All events go through NATS JetStream.** No service-to-service HTTP for async events. Use NATS subject naming `<domain>.<entity>.<verb>.<version>`.
 9. **Standard error format from 00-frozen-contracts §6.** Every non-2xx HTTP response: `{"error": {"code", "message", "request_id", "details?"}}`. Never invent error codes.
@@ -39,9 +50,9 @@ These rules prevent the most common mistakes. Internalize them.
 | Event catalog | `almanac/planning/schemas/01-event-catalog.md` | Every event topic + payload |
 | DB schema | `almanac/planning/schemas/02-database-schema.sql` | Tables, columns, types, indexes, views |
 | HTTP API | `almanac/planning/schemas/03-http-api.md` | Endpoints, request/response, errors |
-| gRPC proto | `almanac/planning/schemas/04-grpc-proto.md` | saruman ↔ palantir-gateway RPCs |
+| gRPC proto | `almanac/planning/schemas/04-grpc-proto.md` | saruman ↔ palantir RPCs |
 | WS protocol | `almanac/planning/schemas/05-websocket-protocol.md` | OBS overlay frames |
-| Webhook schemas | `almanac/planning/schemas/06-webhook-schemas.md` | Midtrans, Xendit payloads |
+| Webhook schemas | `almanac/planning/schemas/06-webhook-schemas.md` | Midtrans (Xendit deferred, see D-016) |
 | Config schema | `almanac/planning/schemas/07-config-schema.md` | Env var names |
 | Flow diagrams | `almanac/planning/schemas/08-flow-diagrams.md` | Visual flow of every state machine |
 
@@ -96,8 +107,8 @@ For complete service-to-service wiring (event topics, gRPC matrix, HTTP matrix, 
 | **1** | Shared library (`inflora-shared`) | proto, events, auth, observability, db, ledger, provider | 8 hours | Phase 0 |
 | **2** | Database migrations | All v2 tables + runner + seed | 4 hours | Phase 1 |
 | **3** | `tolkien` service | Auth + dashboard + admin endpoints | 12 hours | Phase 1, 2 |
-| **4** | `ingest-api` service | Public donations + webhook edge + donor page | 10 hours | Phase 1, 2, 3 |
-| **5** | `palantir-gateway` service | gRPC impl + Midtrans SNAP + Pivot stub | 12 hours | Phase 1, 2 |
+| **4** | `ingest` service | Public donations + webhook edge + donor page | 10 hours | Phase 1, 2, 3 |
+| **5** | `palantir` service | gRPC impl + Midtrans SNAP + Pivot stub | 12 hours | Phase 1, 2 |
 | **6** | `saruman` service | Donation engine + ledger + settlement + holds + recon | 16 hours | Phase 1, 2, 5 |
 | **7** | `ws-gateway` service (friend's main) | OBS overlay WebSocket + per-streamer hub | 16 hours | Phase 1, 3 |
 | **8** | Frontend (`web/`) | Donor page + dashboard + OBS overlay renderer | 12 hours | Phase 3, 7 |
@@ -347,7 +358,7 @@ Phase 0 (polyrepo skeleton).
 | `pkg/ledger/recon.go` | `Reconcile(ctx, db)` checks sum(debit)=sum(credit) per account. |
 | `pkg/provider/interface.go` | `Provider` interface: `CreateTopUp()`, `CreateWithdrawal()`, `CreateRefund()`, `VerifyWebhook()`. |
 | `pkg/provider/midtrans/snap.go` | `MidtransProvider` impl. |
-| `pkg/provider/xendit/invoice.go` | `XenditProvider` impl (Phase 2+). |
+| `pkg/provider/xendit/invoice.go` | `XenditProvider` impl — DEFERRED (D-016, future phase only). |
 | `pkg/provider/pivot/stub.go` | `PivotStub` impl for local dev. |
 | `pkg/config/config.go` | `Load(serviceName)` returns typed `Config` struct. |
 | `pkg/middleware/*.go` | `RequestID()`, `Logging()`, `Recovery()`, `CORS()`, `RateLimit()`. |
@@ -659,7 +670,7 @@ func (s *Server) RotateOverlayToken(w http.ResponseWriter, r *http.Request) {
 
 ---
 
-## 7. Phase 4: `ingest-api` service
+## 7. Phase 4: `ingest` service
 
 ### 7.1 Goal
 
@@ -673,28 +684,28 @@ Phase 1 (pkg), Phase 2 (DB schema), Phase 3 (tolkien for sessions).
 
 | Path | Purpose |
 |---|---|
-| `services/ingest-api/cmd/server/main.go` | HTTP server boot. |
-| `services/ingest-api/internal/config/config.go` | Env vars. |
-| `services/ingest-api/internal/handler/donations.go` | `POST /v1/donations` (intent creation). |
-| `services/ingest-api/internal/handler/webhook.go` | `POST /v1/webhooks/payment` (provider webhooks). |
-| `services/ingest-api/internal/handler/donor_page.go` | `GET /d/:streamer_id` (HTML landing page). |
-| `services/ingest-api/internal/handler/health.go` | `/healthz`, `/readyz`, `/metrics`. |
-| `services/ingest-api/internal/idempotency/store.go` | INSERT idempotency row, return cache hit. |
-| `services/ingest-api/internal/signature/midtrans.go` | HMAC-SHA256 verify for Midtrans. |
-| `services/ingest-api/internal/signature/xendit.go` | Token compare for Xendit (Phase 2). |
-| `services/ingest-api/internal/signature/detect.go` | Detect provider from headers. |
-| `services/ingest-api/internal/saruman/client.go` | gRPC client to saruman: CreateDonationIntent, SettleDonation. |
-| `services/ingest-api/internal/captcha/verify.go` | CAPTCHA verification (stub for MVP, real impl Phase 2+). |
-| `services/ingest-api/internal/palantir/client.go` | gRPC client to palantir-gateway: CreateTopUp. |
-| `services/ingest-api/internal/repo/donations.go` | INSERT donations (INTENT_CREATED). |
-| `services/ingest-api/internal/repo/streamers.go` | SELECT streamer for validation. |
-| `services/ingest-api/internal/events/publisher.go` | Publish `donation.intent.created.v1`. |
+| `services/ingest/cmd/server/main.go` | HTTP server boot. |
+| `services/ingest/internal/config/config.go` | Env vars. |
+| `services/ingest/internal/handler/donations.go` | `POST /v1/donations` (intent creation). |
+| `services/ingest/internal/handler/webhook.go` | `POST /v1/webhooks/payment` (provider webhooks). |
+| `services/ingest/internal/handler/donor_page.go` | `GET /d/:streamer_id` (HTML landing page). |
+| `services/ingest/internal/handler/health.go` | `/healthz`, `/readyz`, `/metrics`. |
+| `services/ingest/internal/idempotency/store.go` | INSERT idempotency row, return cache hit. |
+| `services/ingest/internal/signature/midtrans.go` | HMAC-SHA256 verify for Midtrans. |
+| `services/ingest/internal/signature/xendit.go` | Token compare for Xendit — DEFERRED (D-016). |
+| `services/ingest/internal/signature/detect.go` | Detect provider from headers. |
+| `services/ingest/internal/saruman/client.go` | gRPC client to saruman: CreateDonationIntent. |
+| `services/ingest/internal/captcha/verify.go` | CAPTCHA verification (stub for MVP, real impl Phase 2+). |
+| `services/ingest/internal/palantir/client.go` | gRPC client to palantir: CreateTopUp. |
+| `services/ingest/internal/repo/donations.go` | INSERT donations (INTENT_CREATED). |
+| `services/ingest/internal/repo/streamers.go` | SELECT streamer for validation. |
+| `services/ingest/internal/events/publisher.go` | Publish `donation.intent.created.v1`. |
 | `web/donor-landing/*` | Static HTML/JS for landing page (also served from this service for MVP). |
 
 ### 7.4 Code structure
 
 ```go
-// services/ingest-api/internal/handler/donations.go
+// services/ingest/internal/handler/donations.go
 func (s *Server) CreateDonation(w http.ResponseWriter, r *http.Request) {
     var req DonationRequest
     if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -719,7 +730,7 @@ func (s *Server) CreateDonation(w http.ResponseWriter, r *http.Request) {
     // return {intent_id, donation_id, amount_idr, mdr_idr, gross_charged_idr, payment_url, expires_at}
 }
 
-// services/ingest-api/internal/handler/webhook.go
+// services/ingest/internal/handler/webhook.go
 func (s *Server) Webhook(w http.ResponseWriter, r *http.Request) {
     body, _ := io.ReadAll(r.Body)
     provider := detectProvider(r)
@@ -747,7 +758,7 @@ func (s *Server) Webhook(w http.ResponseWriter, r *http.Request) {
     eventType := parseEventType(provider, body) // "settlement", "PAID", "REFUNDED", etc.
     switch eventType {
     case "topup.completed":
-        // call saruman SettleDonation
+        // call palantir SettleTopUp → palantir publishes pg.gateway.topup.completed.v1 → saruman settles
     case "topup.failed":
         // update donation status to FAILED
     case "refund.completed":
@@ -770,9 +781,9 @@ func (s *Server) Webhook(w http.ResponseWriter, r *http.Request) {
 - [ ] `TestWebhook_MidtransInvalidSignature`: 400 INVALID_SIGNATURE.
 - [ ] `TestWebhook_DuplicateHit`: second webhook returns cached response.
 - [ ] `TestWebhook_FailedStatus`: donation status=FAILED, no ledger entry.
-- [ ] `TestWebhook_SettlementStatus`: saruman SettleDonation called with correct args.
+- [ ] `TestWebhook_SettlementStatus`: palantir SettleTopUp called with correct args.
 - [ ] `TestSignatureDetect_Midtrans`: detects from `X-Signature` header.
-- [ ] `TestSignatureDetect_Xendit`: detects from `X-Callback-Token` header.
+- [ ] `TestSignatureDetect_Xendit`: detects from `X-Callback-Token` header. (DEFERRED — D-016)
 - [ ] `TestMDRCalculation_QRIS`: 10000 IDR × 70 bps = 70 IDR.
 - [ ] `TestDonorPage_RendersHTML`: GET /d/<id> returns 200 with HTML.
 
@@ -783,7 +794,7 @@ func (s *Server) Webhook(w http.ResponseWriter, r *http.Request) {
 - [ ] All endpoints from `03-http-api.md §4` implemented
 - [ ] Idempotency: same webhook 30 times → processed once
 - [ ] Signature verification: invalid signature rejected with 400
-- [ ] Real Midtrans sandbox webhook triggers saruman SettleDonation
+- [ ] Real Midtrans sandbox webhook triggers palantir SettleTopUp → saruman settlement
 - [ ] 80%+ test coverage
 
 ### 7.7 DO NOT
@@ -796,43 +807,43 @@ func (s *Server) Webhook(w http.ResponseWriter, r *http.Request) {
 
 ---
 
-## 8. Phase 5: `palantir-gateway` service
+## 8. Phase 5: `palantir` service
 
 ### 8.1 Goal
 
-Payment provider broker. Owns integration with Midtrans SNAP, Xendit Invoice, Pivot stub. Exposes gRPC to saruman.
+Payment provider broker. Owns integration with Midtrans SNAP and the Pivot stub (Xendit Invoice deferred, D-016). Exposes gRPC to saruman.
 
 ### 8.2 Inputs
 
-Phase 1 (pkg), Phase 2 (DB schema), Phase 4 (ingest-api calls CreateTopUp).
+Phase 1 (pkg), Phase 2 (DB schema), Phase 4 (ingest calls CreateTopUp).
 
 ### 8.3 Deliverables
 
 | Path | Purpose |
 |---|---|
-| `services/palantir-gateway/cmd/server/main.go` | gRPC server boot. |
-| `services/palantir-gateway/internal/config/config.go` | Provider config (Midtrans API keys, etc). |
-| `services/palantir-gateway/internal/grpc/topup.go` | gRPC TopUpService impl: CreateTopUp, SettleTopUp. |
-| `services/palantir-gateway/internal/grpc/withdrawal.go` | gRPC WithdrawalService impl: CreateWithdrawal, SettleWithdrawal. |
-| `services/palantir-gateway/internal/grpc/refund.go` | gRPC RefundService impl: CreateRefund. |
-| `services/palantir-gateway/internal/grpc/health.go` | gRPC health check. |
-| `services/palantir-gateway/internal/provider/interface.go` | `Provider` interface. |
-| `services/palantir-gateway/internal/provider/factory.go` | `NewProvider(name)` returns provider impl. |
-| `services/palantir-gateway/internal/provider/midtrans/snap.go` | Midtrans SNAP client. |
-| `services/palantir-gateway/internal/provider/midtrans/disbursement.go` | Midtrans Disbursement (for bulk payouts). |
-| `services/palantir-gateway/internal/provider/pivot/stub.go` | Pivot stub (auto-confirms). |
-| `services/palantir-gateway/internal/provider/xendit/invoice.go` | Xendit Invoice (Phase 2). |
-| `services/palantir-gateway/internal/repo/gateway_topups.go` | INSERT/UPDATE gateway_topups. |
-| `services/palantir-gateway/internal/repo/gateway_withdrawals.go` | INSERT/UPDATE gateway_withdrawals. |
-| `services/palantir-gateway/internal/repo/gateway_refunds.go` | INSERT/UPDATE gateway_refunds. |
-| `services/palantir-gateway/internal/repo/webhook_events.go` | INSERT webhook_events. |
-| `services/palantir-gateway/internal/events/publisher.go` | Publish `pg.gateway.topup.completed`, `pg.gateway.topup.settled`, `pg.gateway.refund.completed`, `pg.gateway.withdrawal.settled`, `pg.gateway.withdrawal.failed`. |
-| `services/palantir-gateway/internal/signature/verify.go` | HMAC verify for provider webhooks. |
+| `services/palantir/cmd/server/main.go` | gRPC server boot. |
+| `services/palantir/internal/config/config.go` | Provider config (Midtrans API keys, etc). |
+| `services/palantir/internal/grpc/topup.go` | gRPC TopUpService impl: CreateTopUp, SettleTopUp. |
+| `services/palantir/internal/grpc/withdrawal.go` | gRPC WithdrawalService impl: CreateWithdrawal, SettleWithdrawal. |
+| `services/palantir/internal/grpc/refund.go` | gRPC RefundService impl: CreateRefund. |
+| `services/palantir/internal/grpc/health.go` | gRPC health check. |
+| `services/palantir/internal/provider/interface.go` | `Provider` interface. |
+| `services/palantir/internal/provider/factory.go` | `NewProvider(name)` returns provider impl. |
+| `services/palantir/internal/provider/midtrans/snap.go` | Midtrans SNAP client. |
+| `services/palantir/internal/provider/midtrans/disbursement.go` | Midtrans Disbursement (for bulk payouts). |
+| `services/palantir/internal/provider/pivot/stub.go` | Pivot stub (auto-confirms). |
+| `services/palantir/internal/provider/xendit/invoice.go` | Xendit Invoice — DEFERRED (D-016). |
+| `services/palantir/internal/repo/gateway_topups.go` | INSERT/UPDATE gateway_topups. |
+| `services/palantir/internal/repo/gateway_withdrawals.go` | INSERT/UPDATE gateway_withdrawals. |
+| `services/palantir/internal/repo/gateway_refunds.go` | INSERT/UPDATE gateway_refunds. |
+| `services/palantir/internal/repo/webhook_events.go` | INSERT webhook_events. |
+| `services/palantir/internal/events/publisher.go` | Publish `pg.gateway.topup.completed`, `pg.gateway.topup.settled`, `pg.gateway.refund.completed`, `pg.gateway.withdrawal.settled`, `pg.gateway.withdrawal.failed`. |
+| `services/palantir/internal/signature/verify.go` | HMAC verify for provider webhooks. |
 
 ### 8.4 Code structure
 
 ```go
-// services/palantir-gateway/internal/provider/interface.go
+// services/palantir/internal/provider/interface.go
 type Provider interface {
     CreateTopUp(ctx context.Context, req CreateTopUpRequest) (CreateTopUpResponse, error)
     GetTopUpStatus(ctx context.Context, chargeID string) (TopUpStatus, error)
@@ -842,7 +853,7 @@ type Provider interface {
     VerifyWebhook(payload []byte, signature string) bool
 }
 
-// services/palantir-gateway/internal/grpc/topup.go
+// services/palantir/internal/grpc/topup.go
 func (s *Server) CreateTopUp(ctx context.Context, req *topupv1.CreateTopUpRequest) (*topupv1.CreateTopUpResponse, error) {
     provider, err := s.providers.Get(req.ProviderName)
     if err != nil { return nil, status.Errorf(codes.Unavailable, "provider not found") }
@@ -895,7 +906,7 @@ func (s *Server) CreateTopUp(ctx context.Context, req *topupv1.CreateTopUpReques
 - ❌ Don't store raw webhook payloads longer than needed (use `payload_hash` for dedupe)
 - ❌ Don't call provider synchronously without timeout (5s default)
 - ❌ Don't retry on 4xx from provider (only 5xx and timeouts)
-- ❌ Don't expose gRPC publicly (only saruman and ingest-api)
+- ❌ Don't expose gRPC publicly (only saruman and ingest)
 
 ---
 
@@ -903,11 +914,11 @@ func (s *Server) CreateTopUp(ctx context.Context, req *topupv1.CreateTopUpReques
 
 ### 9.1 Goal
 
-Donation engine. Owns the ledger. Processes SettleDonation from ingest-api, writes ledger entries, publishes events. Implements payout creation, settlement handling, holds validation, reconciliation cron.
+Donation engine. Owns the ledger. Processes SettleDonation from ingest, writes ledger entries, publishes events. Implements payout creation, settlement handling, holds validation, reconciliation cron.
 
 ### 9.2 Inputs
 
-Phase 1 (pkg), Phase 2 (DB schema), Phase 5 (palantir-gateway gRPC).
+Phase 1 (pkg), Phase 2 (DB schema), Phase 5 (palantir gRPC).
 
 ### 9.3 Deliverables
 
@@ -1077,10 +1088,10 @@ Phase 1 (pkg), Phase 3 (tolkien's `/v1/internal/validate-overlay-token`), Phase 
 | `services/ws-gateway/internal/ws/connection.go` | Single WS connection lifecycle. |
 | `services/ws-gateway/internal/ws/upgrade.go` | HTTP → WebSocket upgrade with token validation. |
 | `services/ws-gateway/internal/ws/heartbeat.go` | Server-side heartbeat ticker. |
-| `services/ws-gateway/internal/ws/catchup.go` | Replay NATS log for catch-up. |
+| `services/ws-gateway/internal/ws/catchup.go` | Replay from `ws_projection_frames` for catch-up; gap beyond retention emits `system.resync_required`. |
 | `services/ws-gateway/internal/auth/validate.go` | Calls tolkien's validate endpoint, caches. |
 | `services/ws-gateway/internal/subscriber/nats.go` | Subscribes to `donation.charged.v1.>` (or specific topics). |
-| `services/ws-gateway/internal/seq/seq.go` | Per-streamer atomic counter. |
+| `services/ws-gateway/internal/seq/seq.go` | Per-streamer sequence allocator backed by `ws_projection_sequences` (row-lock). |
 | `services/ws-gateway/internal/handlers/health.go` | `/healthz`, `/readyz`, `/metrics`. |
 | `services/ws-gateway/internal/testutil/ws.go` | WebSocket test client helper. |
 
@@ -1227,8 +1238,8 @@ func (s *NatsSubscriber) SubscribeDonations() {
 - [ ] `TestHub_SlowConsumerDisconnects`: blocked client → close 1011.
 - [ ] `TestHeartbeat_SentEvery10s`: client receives heartbeat frames.
 - [ ] `TestHeartbeat_MissedClient30s`: client disconnected → server closes 4408.
-- [ ] `TestCatchUp_ReplaysFromLastSeq`: client sends catch_up → server replays from NATS log.
-- [ ] `TestCatchUp_GapBeyondWindow`: gap > replay_window → catch_up_end with note.
+- [ ] `TestCatchUp_ReplaysFromLastSeq`: client sends catch_up → server replays from `ws_projection_frames`.
+- [ ] `TestCatchUp_GapBeyondWindow`: gap > replay_window → `system.resync_required`.
 - [ ] `TestNatsSubscriber_FanoutOnDonation`: NATS publish → all clients for that streamer receive.
 - [ ] `TestConcurrentConnections_100Clients`: 100 simultaneous connections, all receive messages.
 - [ ] `TestSeqMonotonic`: seq strictly increases for same streamer.
@@ -1265,8 +1276,8 @@ Service is production-ready: metrics, alerts, runbook filled per service, on-cal
 
 - `RUNBOOK.saruman.md` — operations per service
 - `RUNBOOK.tolkien.md`
-- `RUNBOOK.ingest-api.md`
-- `RUNBOOK.palantir-gateway.md`
+- `RUNBOOK.ingest.md`
+- `RUNBOOK.palantir.md`
 - `RUNBOOK.ws-gateway.md`
 - Prometheus alert rules (`deploy/grafana/alerts.yml`)
 - Grafana dashboards per service
@@ -1346,7 +1357,7 @@ jobs:
 
 ```
 ┌─────────────────┐         ┌────────────────────┐
-│  Browser Front End │────────│  ingest-api        │
+│  Browser Front End │────────│  ingest        │
 │  /d/<streamer>     │ HTTPS  │  POST /v1/donations│
 └─────────────────┘         │  POST /v1/webhooks  │
                             └──────┬──────────────┘
@@ -1378,7 +1389,7 @@ jobs:
                             └────────────────────────┘
 
 ┌─────────────────┐         ┌────────────────────┐
-│  saruman         │────────│  palantir-gateway   │──────── Midtrans SNAP
+│  saruman         │────────│  palantir   │──────── Midtrans SNAP
 │  gRPC            │ gRPC   │  TopUpService       │        (or Pivot stub for dev)
 │  CreateTopUp     │            │  WithdrawalService │
 │  SettleTopUp     │            │  RefundService     │
@@ -1399,7 +1410,7 @@ Phase 2 (DB migrations)  ← depends on Phase 1
     ├──→ Phase 3 (tolkien) ──────────┐
     │       │                         │
     │       ↓                         ↓
-    │   Phase 4 (ingest-api)         Phase 5 (palantir-gateway)
+    │   Phase 4 (ingest)         Phase 5 (palantir)
     │       │                             │
     │       ↓                             ↓
     │       └──────────────────────────────┴─→ Phase 6 (saruman) ──┐

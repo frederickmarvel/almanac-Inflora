@@ -1,4 +1,11 @@
-# Claude Code Query — Build Inflora Backend Polyrepo
+# Claude Code Query — Build Inflora Backend Polyrepo — Archived
+
+> **Archived:** 2026-10-06.
+>
+> **Reason:** This was a one-time Phase 0 bootstrap prompt. The six backend
+> repositories now exist, so rerunning it would recreate completed setup work
+> and direct agents to the superseded build plan. For current work, start at
+> [`../../planning/README.md`](../../planning/README.md).
 
 > **Guidance**
 > - **Use this when:** starting Phase 0 of the Inflora backend build (create 6 GitHub repos with skeletons), or any subsequent phase.

@@ -4,7 +4,10 @@
 > - **Use this when:** designing service-to-service interactions, debugging cross-service issues, onboarding new engineers, or asking an AI to add a new connection.
 > - **Audience:**all engineers, AI assistants.
 > - **Read first, before:** any code PR that touches inter-service communication.
-> - **Related:** `BACKEND_BUILD_PLAN.md` (how to build), `planning/schemas/` (contracts), `ops/RUNBOOK.md` (ops).
+> - **Related:** `README.md` (planning index), `AI_BACKEND_COMPLETION_PLAN.md`
+>   (broad execution sequence), `MANUAL_SETTLEMENT_WITHDRAWALS_PLAN.md` (focused
+>   manual settlement/withdrawal scope), `schemas/` (contracts), and
+>   `../ops/RUNBOOK.md` (ops).
 
 This is the **single source of truth for service-to-service wiring** in Inflora's new polyrepo architecture. **Never invent connections** not in this guide. If a new connection is needed, edit this file first, then update code.
 
@@ -21,7 +24,9 @@ This is the **single source of truth for service-to-service wiring** in Inflora'
 | **ws-gateway** | `frederickmarvel/inflora-ws-gateway` | `8083` | — | `8083/ws` | stateful (per-streamer hubs), 1+ replicas | friend |
 | **shared** | `frederickmarvel/inflora-shared` | — | — | — | Go library (not deployed) | both |
 
-**Critical: ports above are the canonical assignments.** Do not use other ports. If you need to change a port, edit this table and update `BACKEND_BUILD_PLAN.md`.
+**Critical: ports above are the canonical assignments.** Do not use other ports.
+If a port must change, update this table, the affected config contract, and the
+applicable current execution plan from [`README.md`](README.md).
 
 ---
 
@@ -193,13 +198,19 @@ Internal HTTP is for service-to-service calls that are NOT in the gRPC matrix an
 
 **Critical:** if a service needs to write a table not in its OWNER/WRITERS row, **this is a bug**. Refactor: either move the write to the canonical writer, or add a new service-to-service call (HTTP, gRPC, or NATS).
 
-**All services use a SINGLE database migration runner** (saruman's `cmd/migrate` runs migrations against the shared schema).See `BACKEND_BUILD_PLAN.md Phase 2` for details.
+**All services use a SINGLE database migration runner** (saruman's `cmd/migrate`
+runs migrations against the shared schema). See
+[`AI_BACKEND_COMPLETION_PLAN.md`](AI_BACKEND_COMPLETION_PLAN.md) and
+[`schemas/02-database-schema.sql`](schemas/02-database-schema.sql) for current
+implementation and ownership details.
 
 ---
 
 ## 7. Per-Repo File Layout (template)
 
-Every service repo follows this layout.**Empty directories are placeholders.** Phase 0 of `BACKEND_BUILD_PLAN.md` creates the skeletons.
+Every service repo follows this layout. The repository skeletons already exist;
+use the applicable incomplete phase in
+[`AI_BACKEND_COMPLETION_PLAN.md`](AI_BACKEND_COMPLETION_PLAN.md) for new work.
 
 ```
 inflora-<service>/

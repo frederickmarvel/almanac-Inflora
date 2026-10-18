@@ -1,6 +1,13 @@
 # Inflora Backend Completion Plan for AI Agents
 
-> **Status:** Proposed authoritative execution plan. Contract corrections in Phase 0 must be approved and applied before service implementation begins.
+> **Status:** Current broad backend execution plan. Use
+> [`README.md`](README.md) to choose the applicable plan. Phase status and
+> remaining validation gaps are tracked in §24.
+>
+> **Focused-plan note:** Manual gateway settlement tracking and creator
+> withdrawals follow
+> [`MANUAL_SETTLEMENT_WITHDRAWALS_PLAN.md`](MANUAL_SETTLEMENT_WITHDRAWALS_PLAN.md),
+> which excludes refunds and admin frontend development.
 >
 > **Purpose:** Finish the scalable MVP backend through small, dependency-ordered phases that can be assigned to AI coding agents without requiring them to invent architecture, names, ownership, or reliability behavior.
 >
@@ -1769,13 +1776,15 @@ Without this evidence, the backend remains in implementation or qualification, n
 
 ## 29. Immediate next action
 
-Start with **Phase 0 only**. Do not begin migrations or service implementation until the almanac unambiguously freezes:
+Use the phase tracker in §24 and the planning index in
+[`README.md`](README.md); do not restart completed phases.
 
-1. Internal Palantir provider-result events.
-2. CHARGED versus SETTLED semantics.
-3. Ledger posting templates and operation keys.
-4. Saruman payout/refund command ownership.
-5. WebSocket durable sequence and replay semantics.
-6. Overlay internal-auth header behavior.
-
-After those gates pass, execute Phases 1 and 2 in order. Only then begin service feature phases.
+- For broad backend completion, close the remaining Phase 2 live PostgreSQL and
+  JetStream validation gap before proceeding to the next incomplete dependent
+  phase.
+- For manual gateway settlement tracking and creator withdrawals, execute only
+  Phase 0 of
+  [`MANUAL_SETTLEMENT_WITHDRAWALS_PLAN.md`](MANUAL_SETTLEMENT_WITHDRAWALS_PLAN.md)
+  until its security/RBAC, maker-checker, gateway-evidence, holiday-calendar,
+  settlement-granularity, execution, eligibility, and correction decisions are
+  approved and frozen.
