@@ -381,7 +381,7 @@ If `auto_select: true`, server picks all REQUESTED payouts FIFO.
 
 ### POST /v1/admin/payout-batches/:id/execute
 
-**Auth:** finops
+**Auth:** `PayoutBatch:Execute` (ak_ ADMIN/SUPERADMIN) — **D-063 (amends D-054):** this is no longer a no-op; tolkien proxies the saruman `SubmitBatch` internal command over `/v1/internal/payout-commands` (shared `X-Internal-Api-Key`) with op key `submit_batch:<batch_id>` and actor `{"type":"BACKOFFICE","id":<principal_id>,"role":<role>}`. 404 batch → `ErrNotFound`; provado/status conflict → 409; saruman unreachable → 503.
 
 **Response 200:**
 ```json
@@ -393,7 +393,7 @@ If `auto_select: true`, server picks all REQUESTED payouts FIFO.
 }
 ```
 
-**Side effects:**
+**Side effects (all in saruman via the proxied command):**
 - UPDATE payout_batches SET status=EXECUTING, executing_at=NOW, provider_batch_id=?
 - Call palantir gRPC `ExecuteBatch(batch_id, payout_ids, total)`
 - For each payout: UPDATE payouts SET status=PROCESSING, processed_at=NOW
@@ -425,6 +425,19 @@ If `auto_select: true`, server picks all REQUESTED payouts FIFO.
 - `POST /v1/admin/streamers/:id/drain`
 - `POST /v1/admin/streamers/:id/rotate-token`
 - `POST /v1/admin/events/replay`
+
+---
+
+### Marvel backoffice additions (D-060/D-061/D-062/D-064, implemented 2026-10-20)
+
+All new routes are `ak_`-only (bridge-resolved backoffice principal) and permission-gated; permission names are data (migration 00017), the RBAC code is unchanged.
+
+- `GET /v1/admin/streamers?search=&limit=&offset=` — **Auth:** `Streamer:Read`. LEFT JOIN `streamer_settings` (platform_fee_bps) + `v_streamer_balances` (pending/available/platform/held); ILIKE search on email/handle; `limit+1` has_more pagination (same shape as admin donations list). 
+- `PATCH /v1/admin/streamers/:id` — **Auth:** `Streamer:Write`. Body `{"is_active": bool?, "platform_fee_bps": int?}` (at least one; bps validated 0..9999 per D-060). TX: `SELECT ... FOR UPDATE` both rows, UPDATE, audit `STREAMER_UPDATED` (before/after). Deactivation already blocks new donation intents (ingest requires `s.is_active=TRUE`) — no other enforcement needed.
+- `GET /v1/admin/payout-requests?status=&streamer_id=&limit=&offset=` — **Auth:** `Payout:Review`. Filters (status enum, streamer), bank last4, pagination as above.
+- `GET /v1/admin/payout-batches/:id` — **Auth:** `PayoutBatch:Read` OR any of Create/Execute (implicit-read rule). Batch row + members.
+- `GET /v1/admin/mdr-rates?provider=&payment_method=` — **Auth:** `MdrRate:Read`. Active (and recent history) rows: mdr_bps, flat_idr, effective window.
+- `PUT /v1/admin/mdr-rates` — **Auth:** `MdrRate:Write`. Body `{"provider_name", "payment_method", "mdr_bps": int, "flat_idr": int?}`. **Upsert per D-061:** retire the active row for (provider, payment_method) and insert a new active row; audit `MDR_RATE_UPDATED`. This is the modular PG-fee-change flow (data only, no code).
 
 ---
 
