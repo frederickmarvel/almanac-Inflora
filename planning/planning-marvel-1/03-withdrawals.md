@@ -24,9 +24,9 @@ Per D-004/D-006 and WIRE_GUIDE §6, enforced from Phase 1 of this work:
 | State | Meaning | Entered by | Exit conditions |
 |---|---|---|---|
 | `REQUESTED` | funds reserved (posting §3 done) | saruman (`create_payout` command) | batch member → `BATCHED`; fast-path submit → `PROCESSING`; terminal reject → `FAILED`(with release) |
-| `BATCHED` | member of a DRAFT/EXECUTING batch | saruman (batch create/add) | batch execute → `PROCESSING`; batch cancel → back to `REQUESTED`; admin cancel → `FAILED` + release |
-| `PROCESSING` | provider attempt in flight (lease active) | saruman (submit/execute) | completed event → `SETTLED`; failed event → `FAILED`; lease expiry×2 → `NEEDS_REVIEW` |
-| `NEEDS_REVIEW` | **NEW** — provider state unknown (timeout/no event) | sweep cron + `RefreshProviderState` returning indeterminate | operator resolution → `SETTLED` / `FAILED` / retry path → `PROCESSING` |
+| `BATCHED` | member of a DRAFT/EXECUTING batch | saruman (batch create/add) | batch execute → `PROCESSING`; batch cancel → back to `REQUESTED`; admin cancel → `FAILED` + release; provider completed/failed event → `NEEDS_REVIEW` **with batch detach** (batch_id cleared + batch counters decremented, CONTRACT_DRIFT D-059) |
+| `PROCESSING` | bookkeeping lease state that mirrors a live provider attempt (palantir attempts the provider creation at `REQUESTED` — CONTRACT_DRIFT D-055) | saruman (submit/execute) | completed event → `SETTLED` (settle-time hold gate re-checked — D-056); failed event → `FAILED`; hold/provider conflict → `NEEDS_REVIEW`; lease expiry×2 → `NEEDS_REVIEW` |
+| `NEEDS_REVIEW` | **NEW** — provider state unknown (timeout/no event) or refused by the settle-time hold gate | sweep cron; `RefreshProviderState` returning indeterminate; `pg.gateway.withdrawal.failed.v1` on a REQUESTED row (provider error folded into the reason, D-055); HOLD_CONFLICT at settle time (D-056) | operator resolution → `SETTLED` / `FAILED` / retry path → `PROCESSING` |
 | `SETTLED` | terminal — provider paid bank (posting §4 appended) | saruman on `pg.gateway.withdrawal.completed.v1` | terminal (no exit) |
 | `FAILED` | terminal — provider rejected/operator aborted; funds released (posting §5 appended) | saruman on `pg.gateway.withdrawal.failed.v1` or operator ForceFail | terminal (no exit) |
 
@@ -104,20 +104,22 @@ Existing frozen producers consumers apply (catalog + wire guide). New/changed ro
 | F-5 | Bank rejects (insufficient/frozen account) | `failed.v1` with reason | payout FAILED + §5 release + notify streamer (`payout.failed.v1`) | Retry after streamer updates bank | E2E with Pivot fake reject |
 | F-6 | Partial batch failure | per-payout outcomes | batch PARTIAL_FAILED; unaffected payouts continue | per-payout Retry/Dismiss + batch Close | mixed-outcome dataset |
 | F-7 | Provider outage | CreateWithdrawal connection errors | retain PROCESSING; pause new submits (circuit) | PauseExecution/Resume | toggle circuit in test |
-| F-8 | Hold created between batch build and execute | Saruman execute re-checks holds; conflicting payout skipped to NEEDS_REVIEW with `HOLD_CONFLICT` | batch PARTIAL_FAILED on skip | operator resolves after hold release | race test |
+| F-8 | Hold created between submit and completion (superseded from "batch build → execute" by CONTRACT_DRIFT D-056) | settlement of PROCESSING→SETTLED re-checks ACTIVE STREAMER/PAYOUT `fund_holds` inside the same serializable TX; conflict → NEEDS_REVIEW `HOLD_CONFLICT`, money stays reserved | — (no batch skip; the payout parks for operator) | operator resolves after hold release (Resolve) or ForceFail with release | race test: hold placed between submit and completion → HOLD_CONFLICT |
 | F-9 | Crash mid-batch-commit | single TX per batch membership claim; outbox in same TX (D-018) | exactly-once state | ReplayEvent | kill-injection test |
 | F-10 | Ledger operation-key collision (double processing) | UNIQUE constraint | second attempt no-ops (idempotent) | none | concurrency test (k workers same event) |
 
 ## 8. Leases, retries, sweeps (concrete parameters)
 
 - `PAYOUT_PROCESSING_LEASE_SEC` (default 600): a PROCESSING payout is "stuck" after 2× lease. Sweep cron (saruman `internal/cron`, currently holds recon) every `PAYOUT_SWEEP_INTERVAL_SEC` (default 120):
-  1. Find PROCESSING older than 2× lease → set NEEDS_REVIEW, audit `SWEEP_STUCK`.
+  1. Find REQUESTED **or** PROCESSING rows whose reservation/lease predates the 2× lease threshold, regardless of attempt count (CONTRACT_DRIFT D-057) → set NEEDS_REVIEW, audit `SWEEP_STUCK`. NEVER auto-fails, never auto-resolves.
   2. Find NEEDS_REVIEW older than `PAYOUT_REVIEW_ESCALATION_SEC` (default 86400) → alert escalation (Slack webhook + `fraud_events`-adjacent marker).
   3. Expire stale holds (existing responsibility) — emit `fund_hold.released.v1`.
 - Retry backoff uses shared `inflora-shared/retry` with the existing NATS `NATS_ACK_WAIT_SEC` semantics; a command that fails before reservation creates no rows; a command that reserves then fails publish retries from outbox (D-018 guarantees).
 - No payout submission without an **acknowledged** `outbox_events` row for its `payout.requested.v1` (assert at execute time: gateway attempt row exists or is created in the same TX).
 
 ## 9. Reconciliation (daily proof)
+
+> **Phase C (CONTRACT_DRIFT D-058): nightly recon is DEFERRED to Phase D.** `reconciliation_drift.kind` ships in 00014 as NULL-default with declared semantics (NULL = ledger semantics; `'WITHDRAWAL'` = mobile drift rows) and is owned by the Phase D recon worker. The Phase C ledger verifier replays `kind=NULL` rows only.
 
 Nightly `RECONCILIATION_CRON` (existing saruman) extends to withdrawals; for each non-terminal payout with a `gateway_withdrawals` row, compare provider status via palantir `GetWithdrawalStatus` (add this RPC to proto — D-030) where provider supports it (Midtrans IRIS status; Pivot deterministic):
 

@@ -24,6 +24,7 @@ Posting templates are encoded as Go functions in `inflora-saruman/internal/ledge
 | `streamer_pending(streamer)` | `STREAMER_PENDING` account for this streamer |
 | `streamer_available(streamer)` | `STREAMER_AVAILABLE` account for this streamer |
 | `streamer_paid(streamer)` | `STREAMER_PAID` account for this streamer |
+| `disbursed(streamer)` | `STREAMER_DISBURSED` account for this streamer (new `DISBURSED` value in `ledger_account_type`, CONTRACT_DRIFT D-048) |
 | `platform_revenue()` | singleton `PLATFORM_REVENUE` account (one global row keyed by `streamer_id = platform`) |
 | `mdr_revenue()` | singleton `MDR_REVENUE` account (informational only; provider takes this directly) |
 | `hold_escrow(streamer)` | escrow account for streamer-level fund holds |
@@ -127,14 +128,14 @@ Trigger: Saruman consumes `pg.gateway.withdrawal.completed.v1`.
 |---|---|
 | `PAYOUT_COMPLETION` | the inbox event's `event_id` |
 
-**Entries:**
+**Entries (amended by CONTRACT_DRIFT D-048):**
 
 | # | Account | Direction | amount_idr | entry_type | external_ref |
 |---|---|---|---|---|---|
 | 1 | `streamer_paid(streamer)` | DEBIT | `amount_idr` | `STREAMER_PAID_DEBIT` (terminal) | `payout_id` |
-| 2 | `streamer_available(streamer)` | CREDIT | `amount_idr` | (noop terminal: balance already moved in §3, this closes the `streamer_paid` account) | `payout_id` |
+| 2 | `disbursed(streamer)` | CREDIT | `amount_idr` | `STREAMER_DISBURSED_CREDIT` | `payout_id` |
 
-**Balance invariant:** terminal entries must zero `streamer_paid` for this payout. Saruman verifies `streamer_paid` is unchanged after commit.
+**Balance invariant:** terminal entries must zero `streamer_paid` for this payout. `streamer_available` is untouched by completion — settled money sits in `disbursed(streamer)` (mobile-money display) until the provider settles. Saruman verifies `streamer_paid` is zero and `streamer_available` unchanged after commit.
 
 Payout state after commit: `status=SETTLED, settled_at=<now>`. Saruman emits `payout.settled.v1` via outbox.
 

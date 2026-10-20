@@ -18,8 +18,11 @@ These events replace the old direct "Ingest → Saruman SettleDonation" path. In
 | `pg.gateway.topup.expired.v1` | palantir | saruman | Top-up window expired without capture |
 | `pg.gateway.withdrawal.completed.v1` | palantir | saruman | Withdrawal settled at the bank |
 | `pg.gateway.withdrawal.failed.v1` | palantir | saruman | Bank rejected / returned the withdrawal |
+| `pg.gateway.topup.settled.v1` (dev-only marker) | palantir | saruman | Pivot dev autosettle closed both capture and settlement in one TX (D-052) |
 | `pg.gateway.refund.completed.v1` | palantir | saruman | Refund settled at the provider |
 | `pg.gateway.refund.failed.v1` | palantir | saruman | Refund rejected / not settled |
+
+Withdrawal payloads are additive (CONTRACT_DRIFT D-047 family): `bank_account_ref` rides the completed/failed payloads; consumers compiled before the field ignore it.
 
 ---
 
@@ -129,6 +132,7 @@ These events replace the old direct "Ingest → Saruman SettleDonation" path. In
   "provider_payout_id":       "WD-98765",
   "provider_event_id":        "evt-987",
   "bank_reference":           "BCA-12345",
+  "bank_account_ref":         "uuid (additive, D-055 mirror)",
   "settled_at":               "2026-10-05T10:30:00Z",
   "gateway_withdrawal_palantir_ref":"gw-<uuid>",
   "webhook_event_id":         "uuid"
@@ -152,6 +156,7 @@ These events replace the old direct "Ingest → Saruman SettleDonation" path. In
   "provider":                 "midtrans",
   "provider_payout_id":       "WD-98765",
   "provider_event_id":        "evt-654",
+  "bank_account_ref":         "uuid (additive, D-055 mirror)",
   "failure_reason":           "BANK_REJECTED",
   "failed_at":                "2026-10-05T10:31:00Z",
   "gateway_withdrawal_palantir_ref":"gw-<uuid>",
@@ -209,7 +214,48 @@ These events replace the old direct "Ingest → Saruman SettleDonation" path. In
 
 ---
 
-## 9. CHARGED vs SETTLED semantics (D-008)
+## 9. `pg.gateway.topup.settled.v1` (dev-only settlement closure, D-052)
+
+**Trigger:** Pivot autosettle-dev path only (default ON in dev). Palantir emits it **alongside** `pg.gateway.topup.completed.v1` in the same outbox TX. There is no prod trigger: prod settlement cadence (T+N, refunds FFF) is out of Phase C (CONTRACT_DRIFT D-052).
+
+**Subject:** `pg.gateway.topup.settled.v1.<streamer_id>`
+
+**Payload:**
+```json
+{
+  "donation_id":              "uuid",
+  "streamer_id":              "uuid",
+  "amount_idr":               10000,
+  "provider":                 "pivot",
+  "provider_event_id":        "evt-settle-1",
+  "settled_at":               "2026-10-02T14:30:01.500Z",
+  "gateway_topup_palantir_ref":"gt-<uuid>"
+}
+```
+
+**Saruman handler:** closes donation `PENDING → SETTLED` + s2 posting (`DonationSettleKey`) + `donation.settled.v1`, reusing the frozen §2-posting amount semantics. Late arrival after manual settlement is a no-op (never regress a settled donation).
+
+---
+
+## 10. payout.* producer register (D-028, registered via CONTRACT_DRIFT D-049)
+
+The payout/batch domain events are produced by **saruman** (payout machine), not by tolkien/palantir as older WIRE_GUIDE editions listed:
+
+| Topic | Producer | Subscribers | Payload |
+|---|---|---|---|
+| `payout.requested.v1` | saruman | palantir (provider attempt at REQUESTED, D-055), tolkien (read-side) | `events.PayoutRequestedEvent` |
+| `payout.batched.v1` | saruman (+tolkien legacy DRAFT-batch path, D-054) | analytics | `events.PayoutBatchedEvent` |
+| `payout.batch.executed.v1` | saruman | analytics | `events.PayoutBatchExecutedEvent` |
+| `payout.settled.v1` | saruman | analytics | `events.PayoutSettledEvent` |
+| `payout.failed.v1` | saruman | analytics | `events.PayoutFailedEvent` |
+| `payout.batch.completed.v1` | saruman | analytics | `events.PayoutBatchCompletedEvent` |
+| `payout.batch.failed.v1` | saruman | analytics | `events.PayoutBatchFailedEvent` |
+
+Payload shapes live in `inflora-shared/events/catalog.go`; saruman emits all of them from its transactional outbox in the same TX as the state transition.
+
+---
+
+## 11. CHARGED vs SETTLED semantics (D-008)
 
 | Term | Trigger | Donation status | Settlement status | PENDING ledger | AVAILABLE ledger | Public event |
 |---|---|---|---|---|---|---|
@@ -222,7 +268,7 @@ These events replace the old direct "Ingest → Saruman SettleDonation" path. In
 
 ---
 
-## 10. Reliability contract
+## 12. Reliability contract
 
 - Every event above is published from `palantir` via `outbox_events` in the same DB transaction as the `gateway_*` row update and the `webhook_events` row insert.
 - `event_id` is generated as UUIDv4 once, stable across outbox retries.

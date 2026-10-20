@@ -114,18 +114,18 @@ Every event published to NATS has exactly **one producer**. Consumers may be mul
 | `pg.gateway.refund.failed.v1` | **palantir** | saruman | Refund rejected / not settled. |
 | `donation.refunded.v1` | **saruman** | analytics | Refund completed |
 | `donation.receipt_sent.v1` | **saruman** | analytics | Donor receipt email sent |
-| `payout.requested.v1` | **tolkien** | palantir, saruman | Streamer requests payout |
-| `payout.batched.v1` | **tolkien** | saruman, palantir, analytics | FinOps creates batch |
-| `payout.settled.v1` | **palantir** | saruman, analytics | Bank settled |
-| `payout.failed.v1` | **palantir** | saruman | Bank rejected |
-| `payout.batch.executed.v1` | **tolkien** | saruman, palantir, analytics | FinOps runs bulk transfer |
-| `payout.batch.completed.v1` | **palantir** | saruman, analytics | All payouts in batch settled |
-| `payout.batch.failed.v1` | **palantir** | saruman, analytics | Bulk batch failed |
+| `payout.requested.v1` | **saruman** | palantir (provider attempt at REQUESTED, D-055), tolkien (read-side) | Payout machine reserved `available→paid` (s3) and published the request |
+| `payout.batched.v1` | **saruman** | analytics (audit) | Payout assigned to a batch. Legacy exception: tolkien's authenticated DRAFT-batch creation path also emits this row (D-054 auth-only; leaves the allowlist when batch creation proxies to the command surface). |
+| `payout.settled.v1` | **saruman** | analytics | Payout machine posted the s4 completion; money in DISBURSED (D-048) |
+| `payout.failed.v1` | **saruman** | analytics | s5 release posted; money restored to available (surface-safe failure_reason) |
+| `payout.batch.executed.v1` | **saruman** | analytics (audit) | SubmitBatch bookkeeping + lease raise (no provider bulk run in Phase C) |
+| `payout.batch.completed.v1` | **saruman** | analytics | CloseBatch closed the batch (once-only CAS) |
+| `payout.batch.failed.v1` | **saruman** | analytics | Batch derived a terminal failure state |
 | `streamer.registered.v1` | **tolkien** | saruman, palantir | New streamer |
 | `streamer.settings.updated.v1` | **tolkien** | saruman (cache), ws-gateway | Settings changed |
 | `overlay.token.rotated.v1` | **tolkien** | saruman (cache invalidation), audit | Token rotated |
-| `fund_hold.created.v1` | **tolkien** | saruman (cache + reject payouts) | Investigation started |
-| `fund_hold.released.v1` | **tolkien** | saruman | Investigation cleared |
+| `fund_hold.created.v1` | **tolkien** | — (consumed as table state: saruman's reserve + settle-time gates read `fund_holds` inside the same serializable TX, D-056) | Investigation started |
+| `fund_hold.released.v1` | **tolkien** | — (same table-state consumption, D-056) | Investigation cleared |
 | `fraud.flagged.v1` | **saruman** | ops dashboard | Inline velocity rule tripped |
 
 **Naming rule:** `<domain>.<entity>.<verb>.<version>`. Subjectformat on NATS: `<topic>.<streamer_id>`. See `00-frozen-contracts.md §2`.
@@ -140,13 +140,15 @@ Every event published to NATS has exactly **one producer**. Consumers may be mul
 |---|---|---|---|
 | **ingest** | palantir | `CreateTopUp` | `schemas/04-grpc-proto.md §topup.proto` |
 | **ingest** | palantir | `SettleTopUp` | `schemas/04-grpc-proto.md §topup.proto` |
-| **saruman** | palantir | `CreateWithdrawal` | `schemas/04-grpc-proto.md §withdrawal.proto` |
-| **saruman** | palantir | `SettleWithdrawal` | `schemas/04-grpc-proto.md §withdrawal.proto` |
+| **ingest** | palantir | `SettleWithdrawal` | `schemas/04-grpc-proto.md §withdrawal.proto` — provider payout webhook routing (T15) |
+| **saruman** | palantir | `GetWithdrawalStatus` | `schemas/04-grpc-proto.md §withdrawal.proto` — reserved for live provider status; Phase C provider-state parity instead reads the `gateway_withdrawals` mirror table written by palantir (D-055) |
 | **saruman** | palantir | `CreateRefund` | `schemas/04-grpc-proto.md §refund.proto` |
 | palantir | saruman | (none — async via NATS) | n/a |
 | ingest | saruman | (none — async via NATS; ingest publishes intent event, saruman provisions) | n/a |
 
 **Critical:** gRPC is for synchronous command/response only ("do this now, return result"). For async fire-and-forget, use **NATS**. Do not invent new gRPC methods; Service-to-service is async.
+
+`CreateWithdrawal` is no longer an inter-service RPC: palantir attempts the provider withdrawal itself when it consumes `payout.requested.v1` (D-055, producer register D-028).
 
 **Auth:** every gRPC call carries header `authorization: Bearer <engine-api-key>`. Validate against `SM_GATEWAY_ENGINE_API_KEY` env var (both caller and callee read same key).
 
@@ -161,8 +163,11 @@ Internal HTTP is for service-to-service calls that are NOT in the gRPC matrix an
 | **ws-gateway** | tolkien | `POST /v1/internal/validate-overlay-token` | Token validation on WS connect | 60s in-memory |
 | **saruman** | tolkien | `POST /v1/internal/send-receipt` | Email receipt trigger | none |
 | **saruman** | tolkien | `POST /v1/internal/rotate-overlay-token-invalidate` | Cache invalidation on token rotation | none |
+| **tolkien** | saruman | `POST /v1/internal/payout-commands` | Payout command envelope (CreatePayout/SubmitPayout/…, D-050) | none |
 
 **Auth:** every internal HTTP call carries header `X-Internal-Api-Key`. Validate against `INTERNAL_API_KEY` env var on callee.
+
+**Phase C trust boundary (D-054/D-050):** the admin payout commands (RetryPayout, ForceFailPayout, RefreshProviderState, ResolvePayout) are reachable only via `POST /v1/internal/payout-commands` under the shared `X-Internal-Api-Key` — saruman performs no `ak_` validation this cycle, and the envelope's `actor` is trusted within the shared-secret boundary. Key holders are operator scripts only. `ak_`-gated admin routing arrives with Phase-A RBAC (migration 00015).
 
 **Timeout:** every internal HTTP call has 5s timeout default, configurable via `INTERNAL_HTTP_TIMEOUT_MS`.
 
@@ -184,16 +189,16 @@ Internal HTTP is for service-to-service calls that are NOT in the gRPC matrix an
 | `ledger_entries` | **saruman ONLY** | (append-only — NEVER UPDATE/DELETE) | saruman (recon), tolkien (audit) | saruman |
 | `ledger_accounts` | saruman (auto-create on streamer.registered) | saruman (balance update + version increment) | saruman, tolkien (read for balance view) | service-to-service |
 | `refunds` | saruman (HTTP facade: tolkien calls Saruman command — D-005) | **saruman only** (status transitions, ledger compensation) | tolkien (audit) | saruman |
-| `payouts` | tolkien (INSERT REQUESTED, via authenticated Saruman command — see D-004) | **saruman only** (status transitions, balance reservation, ledger) | tolkien (read for /v1/me/payouts), saruman | saruman |
-| `payout_batches` | tolkien | tolkien, saruman, palantir | saruman | saruman |
-| `fund_holds` | tolkien | tolkien | saruman (read for payout validation) | saruman |
+| `payouts` | **saruman** (INSERT REQUESTED, s3 reserve posting in the same TX — D-050) | **saruman only** (status transitions, lease, reservation/release postings) | tolkien (read for /v1/me/payouts), palantir (mirror correlate) | saruman |
+| `payout_batches` | **saruman** | **saruman** (AddToBatch/RemoveFromBatch/Submit/Cancel/Close). Legacy exception: tolkien's authenticated DRAFT-batch creation still writes rows (D-054 auth-only swap; leaves this cell the moment batch creation proxies to the command surface). | tolkien (read for /v1/admin/payout-batches) | saruman |
+| `fund_holds` | tolkien | tolkien | saruman (read in-TX: reserve-time + settle-time gates, D-056) | saruman |
 | `email_receipts` | saruman | saruman | saruman | saruman |
 | `mdr_rates` | (read-only at MVP) | (admin edits Phase 2) | ingest (read), saruman (audit) | saruman |
 | `fraud_events` | saruman | saruman | (audit) | saruman |
 | `audit_log` | every service (every privileged action) | (append-only) | (audit) | saruman |
 | `reconciliation_drift` | saruman | saruman | (audit) | saruman |
 | `gateway_topups` | palantir | palantir | saruman (correlate) | palantir |
-| `gateway_withdrawals` | palantir | palantir | saruman (correlate) | palantir |
+| `gateway_withdrawals` | palantir | palantir | saruman (provider-state mirror read: RefreshProviderState, D-055) | palantir |
 | `gateway_refunds` | palantir | palantir | saruman (correlate) | palantir |
 
 **Critical:** if a service needs to write a table not in its OWNER/WRITERS row, **this is a bug**. Refactor: either move the write to the canonical writer, or add a new service-to-service call (HTTP, gRPC, or NATS).

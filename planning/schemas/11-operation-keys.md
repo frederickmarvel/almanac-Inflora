@@ -26,6 +26,13 @@ Namespaces are:
 | `create_payout` | same | business |
 | `complete_payout` | same | business |
 | `fail_payout` | same | business |
+| `create_batch` | same | business (CONTRACT_DRIFT D-051) |
+| `batch_assign` | same | business (D-051) |
+| `batch_revert` | same | business (D-051) |
+| `cancel_batch` | same | business (D-051) |
+| `submit_payout` | same | business (D-051) |
+| `submit_batch` | same | business (D-051) |
+| `close_batch` | same | business (D-051) |
 | `donation_refund` | same | business |
 | `donation_intent` | `idempotency.key` (or stable column on `donations.intent_id`) | HTTP |
 | `palantir_topup` | `gateway_topups.palantir_ref` | provider |
@@ -52,7 +59,16 @@ The resulting UUIDv5 is the literal stored in `ledger_transactions.operation_key
 | Payout reservation | `create_payout:<payout_id>` | same |
 | Payout completion | `complete_payout:<payout_id>` | same |
 | Payout failure release | `fail_payout:<payout_id>` | same |
+| Batch creation | `create_batch:<batch_id>` | same (D-051) |
+| Batch member assignment | `batch_assign:<batch_id>:<payout_id>` | same (D-051) |
+| Batch member revert | `batch_revert:<batch_id>:<payout_id>` | same (D-051) |
+| Batch cancellation | `cancel_batch:<batch_id>` | same (D-051) |
+| Payout submission | `submit_payout:<payout_id>` | same (D-051) |
+| Batch submission | `submit_batch:<batch_id>` | same (D-051) |
+| Batch close | `close_batch:<batch_id>` | same (D-051) |
 | Refund compensation | `donation_refund:<donation_id>:<refund_id>` | same |
+
+**Payout id derivation (frozen, CONTRACT_DRIFT D-051):** when the `Idempotency-Key` header is present on `POST /v1/me/payouts`, the payout id itself is derived — `payout_id = keys.Derived('payout_request:' + streamer_id + ':' + idempotency_key)` — else a random uuid4. tolkien and saruman MUST call the same shared `keys.Derived` function; any drift breaks every idempotent-replay test (CONTRACT_DRIFT D-051, F9).
 
 Operation keys are **also** carried in the corresponding `pg.gateway.*` event payload (`operation_key` field) so Saruman's durable consumer_inbox can reference the same key without re-deriving.
 

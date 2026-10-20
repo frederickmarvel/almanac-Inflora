@@ -157,6 +157,8 @@
 
 **Auth:** session
 
+**Idempotency:** optional `Idempotency-Key` header. Replay returns the same payout (201, same `payout_id`); a changed payload under the same key returns `409 IDEMPOTENCY_CONFLICT` (CONTRACT_DRIFT D-053). Payout id derivation: `keys.Derived('payout_request:' + streamer_id + ':' + idempotency_key)` when the key is present, else uuid4 — tolkien and saruman share the same function (D-051).
+
 **Request:**
 ```json
 {
@@ -187,14 +189,39 @@
 - `403 STREAMER_HOLD_ACTIVE`
 - `404 BANK_ACCOUNT_NOT_FOUND`
 - `400 VALIDATION_FAILED`
+- `409 IDEMPOTENCY_CONFLICT`
+- `503 PAYOUT_SERVICE_UNAVAILABLE`
 
-**Side effects:**
+**Side effects (saruman payout machine):**
 - INSERT payouts (REQUESTED)
-- BEGIN TX: ledger_entries x 2: `STREAMER_AVAILABLE -X`, `STREAMER_PAID +X`
+- BEGIN TX: ledger_entries x 2: `STREAMER_AVAILABLE -X`, `STREAMER_PAID +X` (s3 reserve)
 - COMMIT
-- INSERT audit_log
-- Publish `payout.requested.v1.<streamer_id>`
-- Palantir consumes event, calls provider CreatePayout (per single payout OR waits for batch)
+- Publish `payout.requested.v1.<streamer_id>` (producer: saruman)
+- Palantir consumes the event and attempts the provider withdrawal at REQUESTED (D-055)
+
+---
+
+### GET /v1/me/payouts
+
+**Auth:** session
+
+**Response 200:** full array, capped at 200 rows, newest-first, no cursor in v2 (CONTRACT_DRIFT D-053):
+```json
+{ "data": [
+    { "id": "uuid", "amount_idr": 150000, "status": "REQUESTED",
+      "bank": { "uuid": "uuid", "name": "BCA", "last4": "4242" },
+      "created_at": "2026-10-02T16:00:00Z", "processed_at": null,
+      "settled_at": null, "failure_reason": null }
+] }
+```
+
+---
+
+### GET /v1/me/donations
+
+**Auth:** session
+
+**Response 200:** full array, capped at 200 rows, newest-first, no cursor in v2 (D-053). Row = {donation_id, amount_idr, donor_display_name, message, status, settlement_status, created_at}. No donor email/IP — surface-safe.
 
 ---
 
@@ -476,6 +503,7 @@ Lihat di dashboard: https://app.inflora.app/donations/[donation_id]
 | `PAYOUT_NOT_BATCHABLE` | 409 | status not REQUESTED |
 | `BATCH_HAS_HOLDS` | 409 | some payouts blocked by holds |
 | `SETTLEMENT_PENDING` | 422 | donation not yet settled (informational) |
+| `IDEMPOTENCY_CONFLICT` | 409 | replayed idempotency key with a changed payload (D-053) |
 
 (Other codes from v1 unchanged.)
 
